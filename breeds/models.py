@@ -10,7 +10,7 @@ GROUPS = (
     ('Gundog', 'Gundog'), ('Hound', 'Hound'), ('Pastoral', 'Pastoral'), ('Terrier', 'Terrier'), ('Toy', 'Toy'), ('Utility', 'Utility'), ('Working', 'Working'), ('Crossbreed', 'Crossbreed'), ('Pure', 'Pure')
 )
 
-class Breeds(models.Model):
+class Breed(models.Model):
     breed = models.CharField(max_length=32) #PK
     group = models.CharField(max_length=16, choices=GROUPS)
     size = models.CharField(max_length=5, choices=SIZES)
@@ -44,6 +44,7 @@ class Breeds(models.Model):
 
 class Meta:
     ordering = ('-group',)
+    verbose_name = 'breed'
     verbose_name_plural = "breeds"
 
 def __str__(self):
