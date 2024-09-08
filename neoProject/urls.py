@@ -20,7 +20,7 @@ from django.urls import path,include
 from breeds.views import *
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('dogs/', admin.site.urls),
     path('breeds/', include('breeds.urls', namespace='breeds')),
 ]
 
