@@ -3,7 +3,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 
 
 class Kennel(models.Model):
-    kennel_id = models.CharField(max_length=32 primary_key=True) #PK
+    kennel_id = models.CharField(max_length=32, primary_key=True) #PK
     name = models.CharField(max_length=64)
     location = models.CharField(max_length=256)
     contact_number = models.IntegerField()

@@ -10,7 +10,7 @@ GENDERS = (
 )
 
 class AdoptionDog(models.Model):
-    dog_id = models.CharField(max_length=32 primary_key=True) #PK
+    dog_id = models.CharField(max_length=32, primary_key=True) #PK
     name = models.CharField(max_length=32)
     gender = models.CharField(max_length=16, choices=GENDERS)
     age = models.IntegerField(validators=[MaxValueValidator(30), MinValueValidator(1)])
