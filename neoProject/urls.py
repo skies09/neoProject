@@ -22,6 +22,7 @@ from breeds.views import *
 urlpatterns = [
     path('dogs/', admin.site.urls),
     path('breeds/', include('breeds.urls', namespace='breeds')),
+    path('adoptionDogs/', include('adoptionDogs.urls', namespace='adoptionDogs')),
 ]
 
 if settings.DEBUG:

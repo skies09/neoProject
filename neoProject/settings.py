@@ -163,4 +163,4 @@ REST_FRAMEWORK = {
     # ],
 }
 
-CORS_ALLOWED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://the-neo-project.web.app', 'https://the-neo-project.web.app/', 'http://the-neo-project.web.app']
+CORS_ALLOWED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://the-neo-project.web.app']
