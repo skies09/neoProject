@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from adoption.auth.permissions import UserPermission
 
 
+# This isnt running at the moment but app does log out
+# May be worth looking into for clearing/blacklisting all tokens
 class LogoutViewSet(viewsets.ViewSet):
     permission_classes = (UserPermission,)
     http_method_names = ["post"]
