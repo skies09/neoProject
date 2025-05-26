@@ -4,7 +4,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework import status
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from adoption.auth.serializers import LoginSerializer
-
+import logging
+logger = logging.getLogger(__name__)
 
 class LoginViewSet(ViewSet):
     serializer_class = LoginSerializer
@@ -19,6 +20,11 @@ class LoginViewSet(ViewSet):
         try:
             serializer.is_valid(raise_exception=True)
         except TokenError as e:
+            logger.warning(f"Token error on login: {e}")
             raise InvalidToken(e.args[0])
 
-        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        return Response({
+            "access": serializer.validated_data["access"],
+            "refresh": serializer.validated_data["refresh"],
+            "user": serializer.validated_data["user"],
+        }, status=status.HTTP_200_OK)
