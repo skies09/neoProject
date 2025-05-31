@@ -6,8 +6,8 @@ class KennelSerializer(AbstractSerializer):
     class Meta:
         model = Kennel
         fields = [
-            'id', 'username', 'name', 'email', 
+            'id', 'public_id', 'username', 'name', 'email', 
             'address_line_1', 'town', 'city', 'postcode', 
             'contact_number', 'is_active', 'created', 'updated'
         ]
-        read_only_field = ['id', 'is_active', 'created', 'updated']
+        read_only_fields = ['id', 'public_id', 'is_active', 'created', 'updated']

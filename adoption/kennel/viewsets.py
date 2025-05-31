@@ -10,6 +10,8 @@ class KennelViewSet(AbstractViewSet):
     http_method_names = ('patch', 'get')
     permission_classes = (AllowAny,)
     serializer_class = KennelSerializer
+    lookup_field = "public_id"
+
 
     def get_queryset(self):
         if self.request.user.is_superuser:
@@ -17,11 +19,11 @@ class KennelViewSet(AbstractViewSet):
         return Kennel.objects.exclude(is_superuser=True)
 
     def get_object(self):
-        public_id = self.kwargs['pk']
+        public_id = self.kwargs.get(self.lookup_url_kwarg or self.lookup_field)
         try:
-            obj = Kennel.objects.get(public_id=public_id) 
+            obj = Kennel.objects.get(public_id=public_id)
         except Kennel.DoesNotExist:
-            raise NotFound("Kennel not found")  
+            raise NotFound("Kennel not found")
         self.check_object_permissions(self.request, obj)
         return obj
 

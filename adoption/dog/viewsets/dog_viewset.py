@@ -15,8 +15,11 @@ class DogViewSet(AbstractViewSet):
     serializer_class = DogSerializer
 
     def get_queryset(self):
-        return Dog.objects.all()
-
+        kennel_pk = self.kwargs.get('kennel_public_id') 
+        if kennel_pk:
+            return Dog.objects.filter(kennel__public_id=kennel_pk)
+        return Dog.objects.none()
+    
     def get_object(self):
         try:
             obj = Dog.objects.get_object_by_public_id(self.kwargs["pk"])
@@ -43,9 +46,7 @@ class DogViewSet(AbstractViewSet):
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
     
-      # This method allows unauthenticated users to access the list of dogs
-    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
-    def list_all(self, request):
-        dogs = self.get_queryset()  # Retrieve all dogs
-        serializer = self.serializer_class(dogs, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

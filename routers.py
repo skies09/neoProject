@@ -1,8 +1,8 @@
-# routers.py (or wherever your routers are defined)
-
 from rest_framework_nested import routers
+from rest_framework_nested.routers import SimpleRouter, NestedSimpleRouter
 from breeds.viewsets import BreedViewSet
-from adoption.dog.viewsets import DogViewSet
+from adoption.dog.viewsets.all_dogs_viewset import AllDogsViewSet
+from adoption.dog.viewsets.dog_viewset import DogViewSet
 from adoption.kennel.viewsets import KennelViewSet
 from adoption.auth.viewsets import (
     RegisterViewSet,
@@ -12,38 +12,28 @@ from adoption.auth.viewsets import (
     PasswordChangeViewSet
 )
 
+# Base router
 router = routers.SimpleRouter()
 
-
-# ##################################################################### #
-# ################### BREEDS                     ###################### #
-# ##################################################################### #
-
+# ################### BREEDS ################### #
 router.register(r'breeds', BreedViewSet, basename='breeds')
 
-# ##################################################################### #
-# ################### AUTH                       ###################### #
-# ##################################################################### #
-
+# ################### AUTH ##################### #
 router.register(r"auth/register", RegisterViewSet, basename="auth-register")
 router.register(r"auth/login", LoginViewSet, basename="auth-login")
 router.register(r"auth/refresh", RefreshViewSet, basename="auth-refresh")
 router.register(r"auth/logout", LogoutViewSet, basename="auth-logout")
 router.register(r"auth/change-password", PasswordChangeViewSet, basename="auth-change-password")
 
-# ##################################################################### #
-# ################### KENNEL                     ###################### #
-# ##################################################################### #
+# ################### KENNEL ################### #
+router.register(r"kennels", KennelViewSet, basename="kennels")  # ✅ use plural for clarity
 
-router.register(r"kennel", KennelViewSet, basename="kennel")
+# ################### ALL DOGS ################# #
+router.register(r"dogs", AllDogsViewSet, basename="all-dogs")  # Global list of all dogs
 
+# ################### NESTED: KENNEL -> DOGS #### #
+kennel_router = NestedSimpleRouter(router, r'kennels', lookup='kennel')  # NOT kennel_pk here
+kennel_router.register(r"dogs", DogViewSet, basename="kennel-dogs")
 
-# ##################################################################### #
-# ################### DOG                        ###################### #
-# ##################################################################### #
-
-router.register(r"dog", DogViewSet, basename="dog")
-
-dogs_router = routers.NestedSimpleRouter(router, r"dog", lookup="dog")
-
-urlpatterns = [*router.urls, *dogs_router.urls]
+# Final urlpatterns
+urlpatterns = router.urls + kennel_router.urls
