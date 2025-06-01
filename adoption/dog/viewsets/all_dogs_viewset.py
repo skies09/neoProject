@@ -17,33 +17,46 @@ class AllDogsViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["post"], url_path="filter")
     def filter_dogs(self, request):
         gender = request.data.get("gender")
-        size = request.data.get("size")
         good_with_dogs = request.data.get("goodWithDogs")
         good_with_cats = request.data.get("goodWithCats")
         good_with_children = request.data.get("goodWithChildren")
 
-        print(good_with_dogs)
-        # Start with all dogs
-        dogs = Dog.objects.all()
+        # Define filtering options in order of importance
+        # Iterations of search to find one dog
+        filter_options = [
+            {
+                "gender": gender,
+                "good_with_dogs": good_with_dogs,
+                "good_with_cats": good_with_cats,
+                "good_with_children": good_with_children,
+            },
+            {
+                "good_with_dogs": good_with_dogs,
+                "good_with_cats": good_with_cats,
+                "good_with_children": good_with_children,
+            },
+            # {
+            #     "good_with_cats": good_with_cats,
+            #     "good_with_children": good_with_children,
+            # },
+            # {"good_with_children": good_with_children},
+            {},  # No filters, return oldest dog
+        ]
 
-        # Filter by gender
-        if gender:
-            dogs = dogs.filter(gender__iexact=gender)
+        for filters in filter_options:
+            dogs = Dog.objects.all()
+            for key, value in filters.items():
+                if value is not None:
+                    # Permissive value
+                    if key == "gender":
+                        dogs = dogs.filter(gender__iexact=value)
+                    else:
+                        dogs = dogs.filter(**{key: value})
+            dog = dogs.order_by("created").first()
+            if dog:
+                serializer = self.get_serializer(dog)
+                return Response(serializer.data, status=status.HTTP_200_OK)
 
-        # Filter by good with dogs
-        if good_with_dogs is not None:
-            dogs = dogs.filter(good_with_dogs=good_with_dogs)
-
-        # Filter by good with cats
-        if good_with_cats is not None:
-            dogs = dogs.filter(good_with_cats=good_with_cats)
-
-        # Filter by good with children
-        if good_with_children is not None:
-            dogs = dogs.filter(good_with_children=good_with_children)
-
-        # if size:
-        #     dogs = dogs.filter(size__iexact=size)
-
-        serializer = self.get_serializer(dogs, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(
+            {"detail": "No matching dog found."}, status=status.HTTP_404_NOT_FOUND
+        )
