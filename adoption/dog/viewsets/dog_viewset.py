@@ -9,6 +9,8 @@ from adoption.dog.serializers import DogSerializer
 from adoption.auth.permissions import UserPermission
 from rest_framework.exceptions import NotFound
 
+# Used for the kennel view so the kennel can view the dogs they have in the system, 
+# add more, update dogs or delete when they have been adopted
 class DogViewSet(AbstractViewSet):
     http_method_names = ("post", "get", "put", "delete")
     permission_classes = (UserPermission,)
