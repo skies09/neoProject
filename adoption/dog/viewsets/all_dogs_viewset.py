@@ -35,11 +35,6 @@ class AllDogsViewSet(viewsets.ReadOnlyModelViewSet):
                 "good_with_cats": good_with_cats,
                 "good_with_children": good_with_children,
             },
-            # {
-            #     "good_with_cats": good_with_cats,
-            #     "good_with_children": good_with_children,
-            # },
-            # {"good_with_children": good_with_children},
             {},  # No filters, return oldest dog
         ]
 
