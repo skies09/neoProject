@@ -28,4 +28,5 @@ class KennelSerializer(AbstractSerializer):
             "is_active",
             "created",
             "updated",
+            "reset_password",
         ]

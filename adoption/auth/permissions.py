@@ -1,8 +1,11 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
+import logging
+
+logger = logging.getLogger(__name__)
 
 class UserPermission(BasePermission):
     def has_object_permission(self, request, view, obj):
-        print(f"Object permission check for user: {request.user}, authenticated: {request}")
+        logger.debug(f"Object permission check for user: {request.user}")
        
         if request.user.is_anonymous:
             return request.method in SAFE_METHODS
@@ -14,7 +17,7 @@ class UserPermission(BasePermission):
         return False
 
     def has_permission(self, request, view):
-        print(f"Permission check for user: {request.user}, authenticated: {request}")
+        logger.debug(f"Permission check for user: {request.user}")
        
         if view.basename in ["kennel-dogs", "dog", "all-dogs"]:
             if request.user.is_anonymous:

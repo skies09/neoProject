@@ -4,7 +4,6 @@ from django.contrib.auth.models import (
     BaseUserManager,
     PermissionsMixin,
 )
-import uuid
 from adoption.abstract.models import AbstractModel
 
 
@@ -60,6 +59,7 @@ class Kennel(AbstractModel, AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)  # Required for admin access
     is_superuser = models.BooleanField(default=False)
     reset_password = models.BooleanField(default=True)  # Reset password on first login
+    # api_data_sharing_approved = models.BooleanField(default=False) # will allow ai to auto populate for them
 
     groups = models.ManyToManyField(
         "auth.Group",
@@ -82,4 +82,9 @@ class Kennel(AbstractModel, AbstractBaseUser, PermissionsMixin):
     objects = KennelManager()
 
     def __str__(self):
-        return f"{self.email}"
+        return f"{self.name} ({self.username})"
+
+    class Meta:
+        verbose_name = "Kennel"
+        verbose_name_plural = "Kennels"
+        ordering = ["name"]
