@@ -2,8 +2,7 @@ from rest_framework_nested import routers
 from rest_framework_nested.routers import SimpleRouter, NestedSimpleRouter
 from breeds.viewsets import BreedViewSet
 from adoption.dog.viewsets.all_dogs_viewset import AllDogsViewSet
-from adoption.dog.viewsets.dog_viewset import DogViewSet
-from adoption.dog.viewsets.my_dogs_viewset import MyDogsViewSet
+from adoption.dog.viewsets.dogs_viewset import DogViewSet
 from adoption.kennel.viewsets import KennelViewSet
 from adoption.auth.viewsets import (
     RegisterViewSet,
@@ -43,7 +42,7 @@ router.register(r"dogs", AllDogsViewSet, basename="all-dogs")  # Global list of 
 # ################### NESTED: KENNEL -> DOGS #### #
 kennel_router = NestedSimpleRouter(router, r"kennels", lookup="kennel")
 router.register(
-    r"kennel-dogs", MyDogsViewSet, basename="kennel-dogs"
+    r"kennel-dogs", DogViewSet, basename="kennel-dogs"
 )  # Kennels's own dogs
 
 # Final urlpatterns

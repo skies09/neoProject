@@ -27,4 +27,5 @@ class LoginViewSet(ViewSet):
             "access": serializer.validated_data["access"],
             "refresh": serializer.validated_data["refresh"],
             "user": serializer.validated_data["user"],
+            "requires_password_reset": serializer.validated_data.get("requires_password_reset", False),
         }, status=status.HTTP_200_OK)
