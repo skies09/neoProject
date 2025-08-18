@@ -11,6 +11,7 @@ from adoption.auth.viewsets import (
     LogoutViewSet,
     PasswordChangeViewSet,
     FirstTimePasswordResetViewSet,
+    GeneralPasswordResetViewSet,
 )
 
 # Base router
@@ -31,6 +32,11 @@ router.register(
     r"auth/first-time-password-reset",
     FirstTimePasswordResetViewSet,
     basename="auth-first-time-password-reset",
+)
+router.register(
+    r"auth/reset-password",
+    GeneralPasswordResetViewSet,
+    basename="auth-reset-password",
 )
 
 # ################### KENNEL ################### #
