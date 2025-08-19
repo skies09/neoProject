@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from adoption.dog.models import Dog
 from adoption.dog.serializers import DogSerializer
+import random
 
 
 # Gets all the dogs
@@ -55,3 +56,28 @@ class AllDogsViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             {"detail": "No matching dog found."}, status=status.HTTP_404_NOT_FOUND
         )
+
+    @action(detail=False, methods=["get"], url_path="dog-of-the-day")
+    def dog_of_the_day(self, request):
+        """
+        Returns a random dog as the "dog of the day".
+        """
+        # Get all available dogs
+        dogs = Dog.objects.all()
+
+        if not dogs.exists():
+            return Response(
+                {"detail": "No dogs available."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get a random dog
+        random_dog = random.choice(dogs)
+        serializer = self.get_serializer(random_dog)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # Alternative implementation: Return the oldest dog
+
+        # oldest_dog = dogs.order_by('created').first()
+        # serializer = self.get_serializer(oldest_dog)
+        # return Response(serializer.data, status=status.HTTP_200_OK)

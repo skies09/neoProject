@@ -47,9 +47,7 @@ router.register(r"dogs", AllDogsViewSet, basename="all-dogs")  # Global list of 
 
 # ################### NESTED: KENNEL -> DOGS #### #
 kennel_router = NestedSimpleRouter(router, r"kennels", lookup="kennel")
-router.register(
-    r"kennel-dogs", DogViewSet, basename="kennel-dogs"
-)  # Kennels's own dogs
+kennel_router.register(r"dogs", DogViewSet, basename="kennel-dogs")  # Kennels's own dogs
 
 # Final urlpatterns
 urlpatterns = router.urls + kennel_router.urls

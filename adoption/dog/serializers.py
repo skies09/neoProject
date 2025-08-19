@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from django.core.files.uploadedfile import UploadedFile
+import os
 
 from adoption.abstract.serializers import AbstractSerializer
 from adoption.dog.models import Dog
@@ -30,6 +32,27 @@ class DogSerializer(AbstractSerializer):
         if value is not None:
             if value < 1 or value > 200:
                 raise serializers.ValidationError("Weight must be between 1 and 200 kg")
+        return value
+
+    def validate_image(self, value):
+        """Validate uploaded image file."""
+        if value is not None:
+            # Check file size (max 5MB)
+            if value.size > 5 * 1024 * 1024:  # 5MB in bytes
+                raise serializers.ValidationError("Image file size must be less than 5MB")
+            
+            # Check file extension
+            allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+            file_extension = os.path.splitext(value.name)[1].lower()
+            if file_extension not in allowed_extensions:
+                raise serializers.ValidationError(
+                    f"Image must be one of the following formats: {', '.join(allowed_extensions)}"
+                )
+            
+            # Check if it's actually an image file
+            if not hasattr(value, 'content_type') or not value.content_type.startswith('image/'):
+                raise serializers.ValidationError("Uploaded file must be an image")
+        
         return value
 
     def validate(self, data):
