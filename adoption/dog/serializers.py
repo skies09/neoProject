@@ -7,6 +7,7 @@ from adoption.abstract.serializers import AbstractSerializer
 from adoption.dog.models import Dog
 from adoption.kennel.models import Kennel
 from adoption.kennel.serializers import KennelSerializer
+from breeds.models import Breed
 
 class DogSerializer(AbstractSerializer):
     kennel = serializers.SlugRelatedField(
@@ -93,6 +94,49 @@ class DogSerializer(AbstractSerializer):
             rep['kennel'] = KennelSerializer(instance.kennel).data
         else:
             rep['kennel'] = None
+        
+        # Add breed information if breed name exists
+        if instance.breed:
+            try:
+                breed_obj = Breed.objects.filter(breed__iexact=instance.breed).first()
+                if breed_obj:
+                    rep['breed_info'] = {
+                        'breed': breed_obj.breed,
+                        'group': breed_obj.group,
+                        'size': breed_obj.size,
+                        'lifespan': breed_obj.lifespan,
+                        'height': breed_obj.height,
+                        'weight': breed_obj.weight,
+                        'friendliness': breed_obj.friendliness,
+                        'family_friendly': breed_obj.family_friendly,
+                        'child_friendly': breed_obj.child_friendly,
+                        'pet_friendly': breed_obj.pet_friendly,
+                        'stranger_friendly': breed_obj.stranger_friendly,
+                        'easy_to_groom': breed_obj.easy_to_groom,
+                        'energy_levels': breed_obj.energy_levels,
+                        'health': breed_obj.health,
+                        'shedding_amount': breed_obj.shedding_amount,
+                        'barks_howls': breed_obj.barks_howls,
+                        'easy_to_train': breed_obj.easy_to_train,
+                        'guard_dog': breed_obj.guard_dog,
+                        'playfulness': breed_obj.playfulness,
+                        'apartment_dog': breed_obj.apartment_dog,
+                        'can_be_alone': breed_obj.can_be_alone,
+                        'good_for_busy_owners': breed_obj.good_for_busy_owners,
+                        'good_for_new_owners': breed_obj.good_for_new_owners,
+                        'health_concerns': breed_obj.health_concerns,
+                        'short_description': breed_obj.short_description,
+                        'long_description': breed_obj.long_description,
+                        'portrait_image': breed_obj.portrait_image.url if breed_obj.portrait_image else None,
+                        'landscape_image': breed_obj.landscape_image.url if breed_obj.landscape_image else None,
+                    }
+                else:
+                    rep['breed_info'] = None
+            except Exception:
+                rep['breed_info'] = None
+        else:
+            rep['breed_info'] = None
+        
         return rep
 
     class Meta:

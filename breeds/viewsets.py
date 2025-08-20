@@ -3,7 +3,7 @@ import io
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.decorators import action
-from rest_framework.viewsets import ViewSet
+from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from django.db import transaction
@@ -11,19 +11,33 @@ from django.db import transaction
 from .models import Breed
 from .serializers import BreedSerializer
 
-class BreedViewSet(ViewSet):
-    permission_classes = [AllowAny]
+class BreedViewSet(ModelViewSet):
+    queryset = Breed.objects.all()
     serializer_class = BreedSerializer
+    permission_classes = [AllowAny]
+    http_method_names = ['get']  # Only allow GET requests
 
-    def get_queryset(self):
-        return Breed.objects.all()
-
-    # Endpoint to list all breeds
-    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
-    def list_all(self, request):
-        breeds = self.get_queryset()
-        serializer = self.serializer_class(breeds, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    # Override list method to provide better response
+    def list(self, request, *args, **kwargs):
+        """List all breeds with optional filtering"""
+        queryset = self.get_queryset()
+        
+        # Add filtering options
+        group = request.query_params.get('group', None)
+        if group:
+            queryset = queryset.filter(group=group)
+        
+        size = request.query_params.get('size', None)
+        if size:
+            queryset = queryset.filter(size=size)
+        
+        # Add search functionality
+        search = request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(breed__icontains=search)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     # Endpoint to get distinct breed groups
     @action(detail=False, methods=['get'], permission_classes=[AllowAny], url_path='groups')
@@ -105,6 +119,16 @@ class BreedViewSet(ViewSet):
                         'required_columns': required_fields
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
+                # Helper function to parse rating values
+                def parse_rating(value):
+                    """Convert rating string to integer or None."""
+                    if not value or value.strip() == '':
+                        return None
+                    try:
+                        return int(value.strip())
+                    except (ValueError, TypeError):
+                        return None
+                
                 # Clear existing breeds if requested
                 if clear_existing:
                     Breed.objects.all().delete()
@@ -153,14 +177,58 @@ class BreedViewSet(ViewSet):
                                 })
                                 continue
                             
+                            # Prepare breed data with all available fields
+                            breed_data = {
+                                'group': group,
+                                'size': size if size else None,
+                            }
+                            
+                            # Add all additional fields from CSV if they exist
+                            field_mappings = {
+                                'Lifespan': 'lifespan',
+                                'Height': 'height', 
+                                'Weight': 'weight',
+                                'Friendliness': 'friendliness',
+                                'Family Friendly': 'family_friendly',
+                                'Child Friendly': 'child_friendly',
+                                'Pet Friendly': 'pet_friendly',
+                                'Stranger Friendly': 'stranger_friendly',
+                                'Easy to Groom': 'easy_to_groom',
+                                'Energy Levels': 'energy_levels',
+                                'Health': 'health',
+                                'Shedding Amout': 'shedding_amount',  # Note: typo in CSV
+                                'Barks / Howls': 'barks_howls',       # Note: spaces in CSV
+                                'Easy to Train': 'easy_to_train',
+                                'Watch dog': 'guard_dog',  # Note: CSV has "Watch dog" not "Guard Dog"
+                                'Playfulness': 'playfulness',
+                                'Apartment Dog': 'apartment_dog',
+                                'Can be Alone': 'can_be_alone',
+                                'Good for Busy Owners': 'good_for_busy_owners',
+                                'Good for New Owners': 'good_for_new_owners',
+                                'Health Concerns': 'health_concerns',
+                                'Short Description': 'short_description',
+                                'Long Description': 'long_description',
+                            }
+                            
+                            # Map CSV fields to model fields
+                            for csv_field, model_field in field_mappings.items():
+                                if csv_field in row and row[csv_field]:
+                                    value = row[csv_field].strip()
+                                    if csv_field in ['Friendliness', 'Family Friendly', 'Child Friendly', 
+                                                    'Pet Friendly', 'Stranger Friendly', 'Easy to Groom',
+                                                    'Energy Levels', 'Health', 'Shedding Amout', 
+                                                    'Barks / Howls', 'Easy to Train', 'Watch dog',
+                                                    'Playfulness', 'Apartment Dog', 'Can be Alone',
+                                                    'Good for Busy Owners', 'Good for New Owners']:
+                                        breed_data[model_field] = parse_rating(value)
+                                    else:
+                                        breed_data[model_field] = value
+                            
                             # Create or update breed
                             if update_existing:
                                 breed, created = Breed.objects.update_or_create(
                                     breed=breed_name,
-                                    defaults={
-                                        'group': group,
-                                        'size': size,
-                                    }
+                                    defaults=breed_data
                                 )
                                 if created:
                                     results['created'] += 1
@@ -179,8 +247,7 @@ class BreedViewSet(ViewSet):
                                 
                                 Breed.objects.create(
                                     breed=breed_name,
-                                    group=group,
-                                    size=size,
+                                    **breed_data
                                 )
                                 results['created'] += 1
                         

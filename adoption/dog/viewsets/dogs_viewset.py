@@ -2,6 +2,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
+import uuid
 
 from adoption.abstract.viewsets import AbstractViewSet
 from adoption.dog.models import Dog
@@ -16,8 +17,22 @@ class DogViewSet(AbstractViewSet):
     serializer_class = DogSerializer
 
     def get_queryset(self):
-        # Return only the logged-in user's dogs
-        return Dog.objects.filter(kennel=self.request.user)
+        # Check if we're in a nested context (kennel-dogs)
+        kennel_public_id = self.kwargs.get('kennel_pk')
+        
+        if kennel_public_id:
+            # Convert string to UUID for comparison
+            try:
+                kennel_uuid = uuid.UUID(kennel_public_id)
+                # Check if the kennel ID matches the logged-in user
+                if kennel_uuid != self.request.user.public_id:
+                    raise PermissionDenied("You can only access your own kennel's dogs.")
+                return Dog.objects.filter(kennel=self.request.user)
+            except (ValueError, TypeError):
+                raise PermissionDenied("Invalid kennel ID format.")
+        else:
+            # Return only the logged-in user's dogs
+            return Dog.objects.filter(kennel=self.request.user)
 
     def get_object(self):
         try:
@@ -30,6 +45,16 @@ class DogViewSet(AbstractViewSet):
             raise NotFound("Dog not found.")
 
     def create(self, request, *args, **kwargs):
+        # Check if we're in a nested context and validate kennel ownership
+        kennel_public_id = self.kwargs.get('kennel_pk')
+        if kennel_public_id:
+            try:
+                kennel_uuid = uuid.UUID(kennel_public_id)
+                if kennel_uuid != request.user.public_id:
+                    raise PermissionDenied("You can only create dogs for your own kennel.")
+            except (ValueError, TypeError):
+                raise PermissionDenied("Invalid kennel ID format.")
+        
         # Pass the kennel_public_id in the context
         context = self.get_serializer_context()
         context["kennel_public_id"] = request.user.public_id

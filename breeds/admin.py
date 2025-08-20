@@ -1,9 +1,125 @@
 from django.contrib import admin
+from django.utils.html import format_html
 from .models import Breed
 
 # Register your models here.
 @admin.register(Breed)
 class BreedAdmin(admin.ModelAdmin):
-    list_display = ('breed', 'group', 'size')
-    list_filter = ('breed', 'group', 'size')
-    search_fields = ('breed', 'group')
+    list_display = ('breed', 'group', 'size', 'lifespan', 'height', 'weight', 'display_images')
+    list_filter = ('group', 'size')
+    search_fields = ('breed', 'group', 'short_description')
+    list_per_page = 25
+    ordering = ('breed',)
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('breed', 'group', 'size', 'lifespan', 'height', 'weight')
+        }),
+        ('Temperament & Behavior', {
+            'fields': (
+                'friendliness', 'family_friendly', 'child_friendly', 'pet_friendly', 
+                'stranger_friendly', 'playfulness', 'guard_dog'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Care & Training', {
+            'fields': (
+                'easy_to_groom', 'energy_levels', 'easy_to_train', 'shedding_amount', 
+                'barks_howls'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Lifestyle Compatibility', {
+            'fields': (
+                'apartment_dog', 'can_be_alone', 'good_for_busy_owners', 
+                'good_for_new_owners', 'health'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Health & Description', {
+            'fields': ('health_concerns', 'short_description', 'long_description')
+        }),
+        ('Images', {
+            'fields': ('portrait_image', 'landscape_image'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('breed', 'display_images')  # Make breed read-only since it's the primary identifier
+    
+    def get_readonly_fields(self, request, obj=None):
+        """Make breed field read-only for existing objects"""
+        if obj:  # Editing an existing object
+            return self.readonly_fields + ('breed',)
+        return self.readonly_fields
+    
+    def display_images(self, obj):
+        """Display image previews in the list view"""
+        images = []
+        if obj.portrait_image:
+            images.append(f'<img src="{obj.portrait_image.url}" width="30" height="30" style="border-radius: 50%;" title="Portrait" />')
+        if obj.landscape_image:
+            images.append(f'<img src="{obj.landscape_image.url}" width="30" height="30" style="border-radius: 50%;" title="Landscape" />')
+        
+        if images:
+            return format_html(' '.join(images))
+        return "No images"
+    
+    display_images.short_description = 'Images'
+    display_images.allow_tags = True
+    
+    def get_queryset(self, request):
+        """Optimize queryset for admin list view"""
+        return super().get_queryset(request).select_related()
+    
+    actions = ['mark_as_complete', 'mark_as_incomplete']
+    
+    def mark_as_complete(self, request, queryset):
+        """Mark selected breeds as having complete information"""
+        updated = queryset.update(
+            friendliness__isnull=False,
+            family_friendly__isnull=False,
+            child_friendly__isnull=False,
+            pet_friendly__isnull=False,
+            stranger_friendly__isnull=False,
+            easy_to_groom__isnull=False,
+            energy_levels__isnull=False,
+            health__isnull=False,
+            shedding_amount__isnull=False,
+            barks_howls__isnull=False,
+            easy_to_train__isnull=False,
+            guard_dog__isnull=False,
+            playfulness__isnull=False,
+            apartment_dog__isnull=False,
+            can_be_alone__isnull=False,
+            good_for_busy_owners__isnull=False,
+            good_for_new_owners__isnull=False
+        )
+        self.message_user(request, f'{updated} breeds marked as complete.')
+    
+    mark_as_complete.short_description = "Mark selected breeds as complete"
+    
+    def mark_as_incomplete(self, request, queryset):
+        """Mark selected breeds as having incomplete information"""
+        updated = queryset.update(
+            friendliness=None,
+            family_friendly=None,
+            child_friendly=None,
+            pet_friendly=None,
+            stranger_friendly=None,
+            easy_to_groom=None,
+            energy_levels=None,
+            health=None,
+            shedding_amount=None,
+            barks_howls=None,
+            easy_to_train=None,
+            guard_dog=None,
+            playfulness=None,
+            apartment_dog=None,
+            can_be_alone=None,
+            good_for_busy_owners=None,
+            good_for_new_owners=None
+        )
+        self.message_user(request, f'{updated} breeds marked as incomplete.')
+    
+    mark_as_incomplete.short_description = "Mark selected breeds as incomplete"
