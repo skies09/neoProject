@@ -2,7 +2,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
-from adoption.kennel.serializers import KennelSerializer
+from rest_framework import status
+from adoption.kennel.serializers import KennelSerializer, KennelPasswordChangeSerializer
 from adoption.kennel.models import Kennel
 from adoption.abstract.viewsets import AbstractViewSet
 
@@ -44,3 +45,24 @@ class KennelViewSet(AbstractViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
+
+
+class KennelPasswordChangeViewSet(viewsets.ViewSet):
+    """ViewSet for kennel users to change their password."""
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['post']  # Only allow POST requests
+
+    def create(self, request):
+        """Change the kennel user's password."""
+        serializer = KennelPasswordChangeSerializer(
+            data=request.data, 
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            serializer.create(serializer.validated_data)
+            return Response({
+                "detail": "Password has been changed successfully."
+            }, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
