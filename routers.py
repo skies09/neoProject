@@ -14,6 +14,7 @@ from adoption.auth.viewsets import (
     GeneralPasswordResetViewSet,
 )
 from contact.viewsets import ContactViewSet
+from blog.viewsets import BlogPostViewSet
 
 
 # Base router
@@ -54,6 +55,9 @@ router.register(r"dogs", AllDogsViewSet, basename="all-dogs")  # Global list of 
 
 # ################### CONTACT ################### #
 router.register(r"contacts", ContactViewSet, basename="contacts")
+
+# ################### BLOG ###################### #
+router.register(r"blog/posts", BlogPostViewSet, basename="blogposts")
 
 # ################### NESTED: KENNEL -> DOGS #### #
 kennel_router = NestedSimpleRouter(router, r"kennels", lookup="kennel")

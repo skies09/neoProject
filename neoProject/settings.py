@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "adoption.auth",
     "adoption.dog",
     "contact",
+    "blog",
 ]
 
 MIDDLEWARE = [
@@ -166,11 +167,11 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
     "PAGE_SIZE": 10,
-    "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
-    ],
-    "DEFAULT_THROTTLE_RATES": {"anon": "100/hour", "user": "1000/hour"},
+    # "DEFAULT_THROTTLE_CLASSES": [
+    #     "rest_framework.throttling.AnonRateThrottle",
+    #     "rest_framework.throttling.UserRateThrottle",
+    # ],
+    "DEFAULT_THROTTLE_RATES": {"anon": "1000/hour", "user": "10000/hour"},
     # "DEFAULT_PARSER_CLASSES": [
     #     "rest_framework.parsers.JSONParser",
     #     "rest_framework.parsers.MultiPartParser",
