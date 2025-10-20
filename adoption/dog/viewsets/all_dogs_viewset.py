@@ -60,7 +60,7 @@ class AllDogsViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["get"], url_path="dog-of-the-day")
     def dog_of_the_day(self, request):
         """
-        Returns a random dog as the "dog of the day".
+        Returns up to three random dogs as "The Neo Trio"".
         """
         # Get all available dogs
         dogs = Dog.objects.all()
@@ -70,9 +70,11 @@ class AllDogsViewSet(viewsets.ReadOnlyModelViewSet):
                 {"detail": "No dogs available."}, status=status.HTTP_404_NOT_FOUND
             )
 
-        # Get a random dog
-        random_dog = random.choice(dogs)
-        serializer = self.get_serializer(random_dog)
+        # Select up to three unique random dogs
+        dog_list = list(dogs)
+        sample_size = 3 if len(dog_list) >= 3 else len(dog_list)
+        random_dogs = random.sample(dog_list, k=sample_size)
+        serializer = self.get_serializer(random_dogs, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 

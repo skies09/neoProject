@@ -15,6 +15,9 @@ from adoption.auth.viewsets import (
 )
 from contact.viewsets import ContactViewSet
 from blog.viewsets import BlogPostViewSet
+from shop.viewsets import (
+    ProductViewSet
+)
 
 
 # Base router
@@ -58,6 +61,9 @@ router.register(r"contacts", ContactViewSet, basename="contacts")
 
 # ################### BLOG ###################### #
 router.register(r"blog/posts", BlogPostViewSet, basename="blogposts")
+
+# ################### SHOP ###################### #
+router.register(r"shop/products", ProductViewSet, basename="shop-products")
 
 # ################### NESTED: KENNEL -> DOGS #### #
 kennel_router = NestedSimpleRouter(router, r"kennels", lookup="kennel")

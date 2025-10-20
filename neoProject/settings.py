@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "adoption.dog",
     "contact",
     "blog",
+    "shop",
 ]
 
 MIDDLEWARE = [
