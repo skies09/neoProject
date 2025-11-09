@@ -56,6 +56,48 @@ class DogSerializer(AbstractSerializer):
         
         return value
 
+    def validate_image2(self, value):
+        """Validate uploaded image2 file."""
+        if value is not None:
+            # Check file size (max 5MB)
+            if value.size > 5 * 1024 * 1024:  # 5MB in bytes
+                raise serializers.ValidationError("Image file size must be less than 5MB")
+            
+            # Check file extension
+            allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+            file_extension = os.path.splitext(value.name)[1].lower()
+            if file_extension not in allowed_extensions:
+                raise serializers.ValidationError(
+                    f"Image must be one of the following formats: {', '.join(allowed_extensions)}"
+                )
+            
+            # Check if it's actually an image file
+            if not hasattr(value, 'content_type') or not value.content_type.startswith('image/'):
+                raise serializers.ValidationError("Uploaded file must be an image")
+        
+        return value
+
+    def validate_image3(self, value):
+        """Validate uploaded image3 file."""
+        if value is not None:
+            # Check file size (max 5MB)
+            if value.size > 5 * 1024 * 1024:  # 5MB in bytes
+                raise serializers.ValidationError("Image file size must be less than 5MB")
+            
+            # Check file extension
+            allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+            file_extension = os.path.splitext(value.name)[1].lower()
+            if file_extension not in allowed_extensions:
+                raise serializers.ValidationError(
+                    f"Image must be one of the following formats: {', '.join(allowed_extensions)}"
+                )
+            
+            # Check if it's actually an image file
+            if not hasattr(value, 'content_type') or not value.content_type.startswith('image/'):
+                raise serializers.ValidationError("Uploaded file must be an image")
+        
+        return value
+
     def validate(self, data):
         """Validate the entire data set."""
         # Only validate 'good_with' fields on creation, not update
@@ -144,6 +186,27 @@ class DogSerializer(AbstractSerializer):
         fields = [
             'id', 'public_id', 'name', 'gender', 'age', 'size', 'weight',
             'good_with_dogs', 'good_with_cats', 'good_with_children',
-            'breed', 'is_crossbreed', 'extra_information', 'image', 'kennel',
+            'breed', 'is_crossbreed', 'extra_information', 'image', 'image2', 'image3', 'kennel',
             'created', 'updated'
         ]
+
+
+class DogMatchRequestSerializer(serializers.Serializer):
+    """Serializer for dog matching preferences"""
+    gender = serializers.ChoiceField(choices=[("Male", "Male"), ("Female", "Female")], required=False, allow_null=True)
+    size = serializers.ChoiceField(choices=[("XS", "x-small"), ("S", "small"), ("M", "medium"), ("L", "large"), ("XL", "x-large")], required=False, allow_null=True)
+    age_min = serializers.IntegerField(min_value=0, max_value=30, required=False, allow_null=True)
+    age_max = serializers.IntegerField(min_value=0, max_value=30, required=False, allow_null=True)
+    weight_min = serializers.IntegerField(min_value=1, max_value=200, required=False, allow_null=True)
+    weight_max = serializers.IntegerField(min_value=1, max_value=200, required=False, allow_null=True)
+    good_with_dogs = serializers.BooleanField(required=False, allow_null=True)
+    good_with_cats = serializers.BooleanField(required=False, allow_null=True)
+    good_with_children = serializers.BooleanField(required=False, allow_null=True)
+    breed = serializers.CharField(max_length=32, required=False, allow_null=True, allow_blank=True)
+    is_crossbreed = serializers.BooleanField(required=False, allow_null=True)
+
+
+class DogMatchResponseSerializer(serializers.Serializer):
+    """Serializer for dog match response with match rate"""
+    dog = DogSerializer()
+    match_rate = serializers.FloatField()

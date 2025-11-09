@@ -9,13 +9,13 @@ from rest_framework.exceptions import NotFound
 from django.db import transaction
 
 from .models import Breed
-from .serializers import BreedSerializer
+from .serializers import BreedSerializer, BreedMatchRequestSerializer
 
 class BreedViewSet(ModelViewSet):
     queryset = Breed.objects.all()
     serializer_class = BreedSerializer
     permission_classes = [AllowAny]
-    http_method_names = ['get']  # Only allow GET requests
+    http_method_names = ['get', 'post']  # Allow GET and POST requests
 
     # Override list method to provide better response
     def list(self, request, *args, **kwargs):
@@ -292,3 +292,110 @@ class BreedViewSet(ModelViewSet):
                 'error': 'Import failed',
                 'detail': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # Endpoint to match breeds based on preferences
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny], url_path='match')
+    def match_breeds(self, request):
+        """
+        Match breeds based on user preferences.
+        
+        Accepts preferences for various breed attributes and returns the top 5
+        breeds that best match the criteria, along with match percentages.
+        
+        Example request body:
+        {
+            "size": "M",
+            "pet_friendly": 8,
+            "apartment_dog": 7,
+            "easy_to_groom": 6,
+            "family_friendly": 9,
+            "energy_levels": 5
+        }
+        """
+        # Validate request data
+        request_serializer = BreedMatchRequestSerializer(data=request.data)
+        if not request_serializer.is_valid():
+            return Response({
+                'error': 'Invalid request data',
+                'details': request_serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        preferences = request_serializer.validated_data
+        
+        # Check if at least one preference is provided
+        if not any(preferences.values()):
+            return Response({
+                'error': 'At least one preference must be provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get all breeds
+        breeds = Breed.objects.all()
+        
+        # Calculate match scores for each breed
+        breed_matches = []
+        
+        for breed in breeds:
+            match_scores = []
+            total_weight = 0
+            
+            # Size matching (exact match)
+            if preferences.get('size') is not None:
+                if breed.size == preferences['size']:
+                    match_scores.append(100.0)
+                    total_weight += 1
+                elif breed.size is not None:
+                    match_scores.append(0.0)
+                    total_weight += 1
+            
+            # Numeric field matching (1-10 scale)
+            numeric_fields = [
+                'pet_friendly', 'apartment_dog', 'easy_to_groom', 'family_friendly',
+                'child_friendly', 'energy_levels', 'easy_to_train', 'can_be_alone',
+                'good_for_busy_owners', 'good_for_new_owners', 'shedding_amount',
+                'barks_howls', 'playfulness', 'friendliness', 'stranger_friendly',
+                'guard_dog', 'health'
+            ]
+            
+            for field in numeric_fields:
+                user_pref = preferences.get(field)
+                if user_pref is not None:
+                    breed_value = getattr(breed, field, None)
+                    if breed_value is not None:
+                        # Calculate match percentage based on how close values are
+                        # Perfect match (same value) = 100%
+                        # Difference of 1 = 90%, difference of 2 = 80%, etc.
+                        # Minimum match = 0% for difference >= 10
+                        difference = abs(user_pref - breed_value)
+                        match_percentage = max(0, 100 - (difference * 10))
+                        match_scores.append(match_percentage)
+                        total_weight += 1
+            
+            # Calculate overall match rate
+            if total_weight > 0 and match_scores:
+                overall_match = sum(match_scores) / total_weight
+                breed_matches.append({
+                    'breed': breed,
+                    'match_rate': round(overall_match, 2)
+                })
+        
+        # Sort by match rate (descending) and filter out 0% matches
+        breed_matches.sort(key=lambda x: x['match_rate'], reverse=True)
+        # Only include breeds with match rate greater than 0%
+        non_zero_matches = [match for match in breed_matches if match['match_rate'] > 0]
+        # Get top 5 (or fewer if less than 5 have > 0% match)
+        top_5_matches = non_zero_matches[:5]
+        
+        # Serialize results
+        results = []
+        for match in top_5_matches:
+            breed_serializer = BreedSerializer(match['breed'])
+            results.append({
+                'breed': breed_serializer.data,
+                'match_rate': match['match_rate']
+            })
+        
+        return Response({
+            'matches': results,
+            'total_breeds_compared': len(breed_matches),
+            'preferences_used': {k: v for k, v in preferences.items() if v is not None}
+        }, status=status.HTTP_200_OK)

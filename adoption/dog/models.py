@@ -63,6 +63,12 @@ class Dog(AbstractModel):
     image = models.ImageField(
         null=True, blank=True, upload_to="adoption/dog/images", help_text="Dog's photo"
     )
+    image2 = models.ImageField(
+        null=True, blank=True, upload_to="adoption/dog/images", help_text="Dog's second photo"
+    )
+    image3 = models.ImageField(
+        null=True, blank=True, upload_to="adoption/dog/images", help_text="Dog's third photo"
+    )
     kennel = models.ForeignKey(
         to="adoption_kennel.Kennel",
         on_delete=models.CASCADE,

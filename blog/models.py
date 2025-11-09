@@ -19,6 +19,7 @@ class BlogPost(AbstractModel):
     is_published = models.BooleanField(default=False)
     published_at = models.DateTimeField(null=True, blank=True)
     featured_image = models.ImageField(upload_to='blog/images/', blank=True, null=True)
+    featured = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['-published_at', '-created']

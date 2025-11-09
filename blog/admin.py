@@ -4,8 +4,8 @@ from .models import BlogPost
 
 @admin.register(BlogPost)
 class BlogPostAdmin(admin.ModelAdmin):
-    list_display = ['title', 'author', 'category', 'is_published', 'published_at']
-    list_filter = ['is_published', 'category', 'author', 'created']
+    list_display = ['title', 'author', 'category', 'is_published', 'featured', 'published_at']
+    list_filter = ['is_published', 'featured', 'category', 'author', 'created']
     search_fields = ['title', 'content', 'category', 'tags']
     prepopulated_fields = {'slug': ('title',)}
     readonly_fields = ['created', 'updated', 'published_at']
@@ -18,7 +18,7 @@ class BlogPostAdmin(admin.ModelAdmin):
             'fields': ('category', 'tags')
         }),
         ('Publishing', {
-            'fields': ('is_published', 'published_at')
+            'fields': ('is_published', 'featured', 'published_at')
         }),
         ('Media', {
             'fields': ('featured_image',),
