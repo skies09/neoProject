@@ -11,9 +11,16 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 """
 
 import os
-import env
 from pathlib import Path
 from datetime import timedelta
+
+# Import env.py only if it exists (for local development)
+# In production, environment variables are set directly in Render
+try:
+    import env
+except ImportError:
+    # env.py doesn't exist - this is fine for production
+    pass
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,10 +29,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.0/howto/deployment/checklist/
 
-ENV = os.environ.get("ENV")
+ENV = os.environ.get("ENV", "DEV")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY environment variable must be set!")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False if ENV == "PROD" else True
@@ -92,23 +101,48 @@ WSGI_APPLICATION = "neoProject.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.0/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+# Use PostgreSQL for production (Supabase), SQLite for local development
+if ENV == "PROD" or os.environ.get("DATABASE_URL"):
+    # Parse DATABASE_URL if provided (Render/Supabase format)
+    if os.environ.get("DATABASE_URL"):
+        try:
+            import dj_database_url
+            DATABASES = {
+                "default": dj_database_url.parse(os.environ.get("DATABASE_URL"))
+            }
+        except ImportError:
+            # Fallback if dj-database-url is not installed (shouldn't happen in production)
+            # Use individual environment variables instead
+            DATABASES = {
+                "default": {
+                    "ENGINE": "django.db.backends.postgresql",
+                    "NAME": os.getenv("DATABASE_NAME"),
+                    "USER": os.getenv("DATABASE_USER"),
+                    "PASSWORD": os.getenv("DATABASE_PASSWORD"),
+                    "HOST": os.getenv("DATABASE_HOST"),
+                    "PORT": os.getenv("DATABASE_PORT", "5432"),
+                }
+            }
+    else:
+        # Fallback to individual environment variables
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": os.getenv("DATABASE_NAME"),
+                "USER": os.getenv("DATABASE_USER"),
+                "PASSWORD": os.getenv("DATABASE_PASSWORD"),
+                "HOST": os.getenv("DATABASE_HOST"),
+                "PORT": os.getenv("DATABASE_PORT", "5432"),
+            }
+        }
+else:
+    # SQLite for local development
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
-
-# DATABASES = {
-#     'default':{
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.getenv("DATABASE_NAME"),
-#         "USER": os.getenv("DATABASE_USER"),
-#         "PASSWORD": os.getenv("DATABASE_PASSWORD"),
-#         "HOST": os.getenv('DATABASE_HOST'),
-#         "PORT": os.getenv("DATABASE_PORT"),
-#     }
-# }
 
 # Password validation
 # https://docs.djangoproject.com/en/4.0/ref/settings/#auth-password-validators
@@ -190,11 +224,18 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://the-neo-project.web.app",
-]
+# CORS settings - use environment variable in production, fallback to defaults for local dev
+CORS_ALLOWED_ORIGINS_ENV = os.environ.get("CORS_ALLOWED_ORIGINS")
+if CORS_ALLOWED_ORIGINS_ENV:
+    # Parse comma-separated origins from environment variable
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS_ENV.split(",")]
+else:
+    # Default origins for local development
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://the-neo-project.web.app",
+    ]
 CORS_ALLOW_CREDENTIALS = True
 
 # Logging Configuration
