@@ -107,6 +107,7 @@ if ENV == "PROD" or os.environ.get("DATABASE_URL"):
     if os.environ.get("DATABASE_URL"):
         try:
             import dj_database_url
+
             DATABASES = {
                 "default": dj_database_url.parse(os.environ.get("DATABASE_URL"))
             }
@@ -228,7 +229,9 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS_ENV = os.environ.get("CORS_ALLOWED_ORIGINS")
 if CORS_ALLOWED_ORIGINS_ENV:
     # Parse comma-separated origins from environment variable
-    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS_ENV.split(",")]
+    CORS_ALLOWED_ORIGINS = [
+        origin.strip() for origin in CORS_ALLOWED_ORIGINS_ENV.split(",")
+    ]
 else:
     # Default origins for local development
     CORS_ALLOWED_ORIGINS = [

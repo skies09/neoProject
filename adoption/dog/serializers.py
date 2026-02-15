@@ -192,9 +192,15 @@ class DogSerializer(AbstractSerializer):
 
 
 class DogMatchRequestSerializer(serializers.Serializer):
-    """Serializer for dog matching preferences"""
-    gender = serializers.ChoiceField(choices=[("Male", "Male"), ("Female", "Female")], required=False, allow_null=True)
-    size = serializers.ChoiceField(choices=[("XS", "x-small"), ("S", "small"), ("M", "medium"), ("L", "large"), ("XL", "x-large")], required=False, allow_null=True)
+    """Serializer for dog matching preferences. All fields optional. Empty string treated as no preference."""
+    gender = serializers.ChoiceField(
+        choices=[("Male", "Male"), ("Female", "Female")],
+        required=False, allow_null=True, allow_blank=True
+    )
+    size = serializers.ChoiceField(
+        choices=[("XS", "x-small"), ("S", "small"), ("M", "medium"), ("L", "large"), ("XL", "x-large")],
+        required=False, allow_null=True, allow_blank=True
+    )
     age_min = serializers.IntegerField(min_value=0, max_value=30, required=False, allow_null=True)
     age_max = serializers.IntegerField(min_value=0, max_value=30, required=False, allow_null=True)
     weight_min = serializers.IntegerField(min_value=1, max_value=200, required=False, allow_null=True)
@@ -204,6 +210,24 @@ class DogMatchRequestSerializer(serializers.Serializer):
     good_with_children = serializers.BooleanField(required=False, allow_null=True)
     breed = serializers.CharField(max_length=32, required=False, allow_null=True, allow_blank=True)
     is_crossbreed = serializers.BooleanField(required=False, allow_null=True)
+
+    def validate_breed(self, value):
+        """Breed must be one of the breeds from the breeds API (dropdown selection)."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        stripped = value.strip()
+        if not Breed.objects.filter(breed__iexact=stripped).exists():
+            raise serializers.ValidationError(
+                f"Breed must be selected from the breeds list. No breed found matching '{stripped}'."
+            )
+        return stripped
+
+    def validate(self, attrs):
+        """Normalize empty strings to None so they are treated as 'no preference'."""
+        for key in ('gender', 'size', 'breed'):
+            if key in attrs and attrs[key] is not None and str(attrs[key]).strip() == '':
+                attrs[key] = None
+        return attrs
 
 
 class DogMatchResponseSerializer(serializers.Serializer):
