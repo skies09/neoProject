@@ -11,6 +11,219 @@ from django.db import transaction
 from .models import Breed
 from .serializers import BreedSerializer, BreedMatchRequestSerializer
 
+
+def _parse_breed_csv_rating(value):
+    """Same rules as import_dogdb_csv: 1–10 as-is; 11–100 → 1–10 scale."""
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        raw = int(round(float(str(value).strip())))
+    except (ValueError, TypeError):
+        return None
+    if raw <= 0:
+        return None
+    if raw <= 10:
+        return raw
+    if raw <= 100:
+        return max(1, min(10, round(raw / 10.0)))
+    return 10
+
+
+_BREED_GROUP_MAP = {
+    "Gundog": "Gundog",
+    "Hound": "Hound",
+    "Pastoral": "Pastoral",
+    "Terrier": "Terrier",
+    "Toy": "Toy",
+    "Utility": "Utility",
+    "Working": "Working",
+    "Crossbreed": "Crossbreed",
+    "Pure": "Pure",
+}
+
+_BREED_SIZE_MAP = {
+    "XS": "XS",
+    "S": "S",
+    "M": "M",
+    "L": "L",
+    "XL": "XL",
+    "x-small": "XS",
+    "small": "S",
+    "medium": "M",
+    "large": "L",
+    "x-large": "XL",
+}
+
+
+def _valid_breed_groups():
+    return {c[0] for c in Breed._meta.get_field("group").choices}
+
+
+def _valid_breed_sizes():
+    return {c[0] for c in Breed._meta.get_field("size").choices}
+
+
+def _csv_column_map(fieldnames):
+    """
+    Map header lookups (exact + casefold) -> DictReader key on each row.
+    Strips whitespace and leading BOM so Excel/UTF-8 exports still match.
+    """
+    m = {}
+    for fn in fieldnames or []:
+        if fn is None:
+            continue
+        logical = fn.strip().lstrip("\ufeff")
+        if not logical:
+            continue
+        if logical not in m:
+            m[logical] = fn
+        cf = logical.casefold()
+        if cf not in m:
+            m[cf] = fn
+    return m
+
+
+def _row_get(row, col_map, *names):
+    """First matching column (any casing) wins."""
+    for name in names:
+        key = col_map.get(name)
+        if key is None and name:
+            key = col_map.get(name.casefold())
+        if key is not None:
+            return row.get(key)
+    return None
+
+
+def _has_required_headers(col_map, headers):
+    for h in headers:
+        if h in col_map or h.casefold() in col_map:
+            continue
+        return False
+    return True
+
+
+def _normalize_breed_group_size(group_raw, size_raw):
+    """
+    Map CSV group/size strings to model values. Invalid group → (None, None, error).
+    Empty or invalid size → None (matches import_dogdb_csv).
+    """
+    valid_g = _valid_breed_groups()
+    valid_s = _valid_breed_sizes()
+    group = (group_raw or "").strip()
+    size = (size_raw or "").strip()
+    mapped_g = _BREED_GROUP_MAP.get(group, group)
+    if mapped_g not in valid_g:
+        return (
+            None,
+            None,
+            f'Invalid group "{group_raw}". Valid: {", ".join(sorted(valid_g))}',
+        )
+    if not size:
+        return mapped_g, None, None
+    mapped_s = _BREED_SIZE_MAP.get(size, size)
+    if mapped_s not in valid_s:
+        return mapped_g, None, None
+    return mapped_g, mapped_s, None
+
+
+# DogDB.csv column names → model fields (ratings parsed with _parse_breed_csv_rating)
+_DOGDB_RATING_COLUMNS = {
+    "Friendliness": "friendliness",
+    "Family Friendly": "family_friendly",
+    "Child Friendly": "child_friendly",
+    "Pet Friendly": "pet_friendly",
+    "Stranger Friendly": "stranger_friendly",
+    "Easy to Groom": "easy_to_groom",
+    "Energy Levels": "energy_levels",
+    "Health": "health",
+    "Shedding Amout": "shedding_amount",
+    "Barks / Howls": "barks_howls",
+    "Easy to Train": "easy_to_train",
+    "Guard Dog": "guard_dog",
+    "Playfulness": "playfulness",
+    "Apartment Dog": "apartment_dog",
+    "Can be Alone": "can_be_alone",
+    "Good for Busy Owners": "good_for_busy_owners",
+    "Good for New Owners": "good_for_new_owners",
+}
+
+_DOGDB_TEXT_COLUMNS = {
+    "Lifespan": "lifespan",
+    "Height": "height",
+    "Weight": "weight",
+    "Health Concerns": "health_concerns",
+    "Short Description": "short_description",
+    "Long Description": "long_description",
+}
+
+
+def _breed_row_from_dogdb(row, col_map):
+    breed_name = (_row_get(row, col_map, "Breed") or "").strip()
+    group_raw = _row_get(row, col_map, "Group") or ""
+    size_raw = _row_get(row, col_map, "Size") or ""
+    mapped_g, mapped_s, err = _normalize_breed_group_size(group_raw, size_raw)
+    if err:
+        return None, err
+    data = {
+        "breed": breed_name,
+        "group": mapped_g,
+        "size": mapped_s,
+    }
+    for csv_col, model_field in _DOGDB_TEXT_COLUMNS.items():
+        v = (_row_get(row, col_map, csv_col) or "").strip()
+        data[model_field] = v or None
+    for csv_col, model_field in _DOGDB_RATING_COLUMNS.items():
+        data[model_field] = _parse_breed_csv_rating(
+            _row_get(row, col_map, csv_col) or ""
+        )
+    return data, None
+
+
+# Optional columns when using simple lowercase headers (same semantics as DogDB extras)
+_SIMPLE_EXTRA_RATING = {
+    "Friendliness": "friendliness",
+    "Family Friendly": "family_friendly",
+    "Child Friendly": "child_friendly",
+    "Pet Friendly": "pet_friendly",
+    "Stranger Friendly": "stranger_friendly",
+    "Easy to Groom": "easy_to_groom",
+    "Energy Levels": "energy_levels",
+    "Health": "health",
+    "Shedding Amout": "shedding_amount",
+    "Barks / Howls": "barks_howls",
+    "Easy to Train": "easy_to_train",
+    "Watch dog": "guard_dog",
+    "Guard Dog": "guard_dog",
+    "Playfulness": "playfulness",
+    "Apartment Dog": "apartment_dog",
+    "Can be Alone": "can_be_alone",
+    "Good for Busy Owners": "good_for_busy_owners",
+    "Good for New Owners": "good_for_new_owners",
+}
+
+_SIMPLE_EXTRA_TEXT = {
+    "Lifespan": "lifespan",
+    "Height": "height",
+    "Weight": "weight",
+    "Health Concerns": "health_concerns",
+    "Short Description": "short_description",
+    "Long Description": "long_description",
+}
+
+
+def _merge_simple_optional_columns(row, breed_data, col_map):
+    """Apply optional Title Case columns if present (shared with DogDB-style files)."""
+    for csv_col, model_field in _SIMPLE_EXTRA_TEXT.items():
+        v = _row_get(row, col_map, csv_col)
+        if v:
+            breed_data[model_field] = str(v).strip() or None
+    for csv_col, model_field in _SIMPLE_EXTRA_RATING.items():
+        v = _row_get(row, col_map, csv_col)
+        if v:
+            breed_data[model_field] = _parse_breed_csv_rating(v)
+    return breed_data
+
+
 class BreedViewSet(ModelViewSet):
     queryset = Breed.objects.all()
     serializer_class = BreedSerializer
@@ -74,195 +287,160 @@ class BreedViewSet(ModelViewSet):
     @action(detail=False, methods=['post'], permission_classes=[AllowAny], url_path='import-csv')
     def import_csv(self, request):
         """
-        Import breeds from an uploaded CSV file.
-        
-        Expected form data:
-        - csv_file: The CSV file to upload
-        - update: (optional) Boolean to update existing breeds
-        - clear: (optional) Boolean to clear existing breeds before import
+        Import breeds from an uploaded CSV file (multipart form).
+
+        Form fields:
+        - csv_file: CSV file (required)
+        - update: optional, "true" / "false" (default false)
+        - clear: optional, "true" / "false" — delete all breeds before import
+
+        Supported CSV layouts:
+        - DogDB: columns Breed, Group, Size (plus optional DogDB trait columns)
+        - Simple: columns breed, group, size (plus optional Title Case extras)
         """
         try:
-            # Check if file was uploaded
             if 'csv_file' not in request.FILES:
                 return Response({
                     'error': 'No CSV file provided',
                     'detail': 'Please upload a CSV file using the csv_file field'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             csv_file = request.FILES['csv_file']
-            
-            # Validate file type
+
             if not csv_file.name.lower().endswith('.csv'):
                 return Response({
                     'error': 'Invalid file type',
                     'detail': 'Please upload a CSV file'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Get options from request
+
             update_existing = request.data.get('update', 'false').lower() == 'true'
             clear_existing = request.data.get('clear', 'false').lower() == 'true'
-            
-            # Read and process CSV
+
             try:
-                # Decode the file content
                 csv_content = csv_file.read().decode('utf-8')
+                if csv_content.startswith('\ufeff'):
+                    csv_content = csv_content[1:]
                 csv_reader = csv.DictReader(io.StringIO(csv_content))
-                
-                # Validate CSV headers
-                required_fields = ['breed', 'group', 'size']
-                if not all(field in csv_reader.fieldnames for field in required_fields):
-                    missing_fields = [field for field in required_fields if field not in csv_reader.fieldnames]
+                fieldnames = csv_reader.fieldnames
+
+                if not fieldnames:
                     return Response({
                         'error': 'Invalid CSV format',
-                        'detail': f'Missing required columns: {", ".join(missing_fields)}',
-                        'available_columns': list(csv_reader.fieldnames),
-                        'required_columns': required_fields
+                        'detail': 'CSV has no header row',
                     }, status=status.HTTP_400_BAD_REQUEST)
-                
-                # Helper function to parse rating values
-                def parse_rating(value):
-                    """Convert rating string to integer or None."""
-                    if not value or value.strip() == '':
-                        return None
-                    try:
-                        return int(value.strip())
-                    except (ValueError, TypeError):
-                        return None
-                
-                # Clear existing breeds if requested
+
+                col_map = _csv_column_map(fieldnames)
+                dogdb_ok = _has_required_headers(col_map, ('Breed', 'Group', 'Size'))
+                simple_ok = _has_required_headers(col_map, ('breed', 'group', 'size'))
+
+                if dogdb_ok:
+                    csv_format = 'dogdb'
+                elif simple_ok:
+                    csv_format = 'simple'
+                else:
+                    return Response({
+                        'error': 'Invalid CSV format',
+                        'detail': (
+                            'Need either DogDB headers (Breed, Group, Size) or '
+                            'simple headers (breed, group, size).'
+                        ),
+                        'available_columns': list(fieldnames),
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
                 if clear_existing:
                     Breed.objects.all().delete()
-                
-                # Process breeds
+
                 results = {
+                    'csv_format': csv_format,
                     'created': 0,
                     'updated': 0,
                     'errors': 0,
                     'skipped': 0,
-                    'error_details': []
+                    'error_details': [],
                 }
-                
-                with transaction.atomic():
-                    for row_number, row in enumerate(csv_reader, start=2):  # Start at 2 because of header
-                        try:
-                            # Clean and validate data
-                            breed_name = row['breed'].strip()
-                            group = row['group'].strip()
-                            size = row['size'].strip()
-                            
-                            # Skip empty rows
+
+                for row_number, row in enumerate(csv_reader, start=2):
+                    try:
+                        if csv_format == 'dogdb':
+                            breed_data, err = _breed_row_from_dogdb(row, col_map)
+                            if err:
+                                results['errors'] += 1
+                                results['error_details'].append({
+                                    'row': row_number,
+                                    'breed': (
+                                        _row_get(row, col_map, 'Breed') or ''
+                                    ).strip(),
+                                    'error': err,
+                                })
+                                continue
+                            breed_name = breed_data['breed']
                             if not breed_name:
                                 results['skipped'] += 1
                                 continue
-                            
-                            # Validate group
-                            valid_groups = [choice[0] for choice in Breed._meta.get_field('group').choices]
-                            if group not in valid_groups:
+                            defaults = {k: v for k, v in breed_data.items() if k != 'breed'}
+                        else:
+                            breed_name = (
+                                _row_get(row, col_map, 'breed') or ''
+                            ).strip()
+                            if not breed_name:
+                                results['skipped'] += 1
+                                continue
+                            mapped_g, mapped_s, err = _normalize_breed_group_size(
+                                _row_get(row, col_map, 'group') or '',
+                                _row_get(row, col_map, 'size') or '',
+                            )
+                            if err:
                                 results['errors'] += 1
                                 results['error_details'].append({
                                     'row': row_number,
                                     'breed': breed_name,
-                                    'error': f'Invalid group "{group}". Valid groups: {", ".join(valid_groups)}'
+                                    'error': err,
                                 })
                                 continue
-                            
-                            # Validate size
-                            valid_sizes = [choice[0] for choice in Breed._meta.get_field('size').choices]
-                            if size not in valid_sizes:
-                                results['errors'] += 1
-                                results['error_details'].append({
-                                    'row': row_number,
-                                    'breed': breed_name,
-                                    'error': f'Invalid size "{size}". Valid sizes: {", ".join(valid_sizes)}'
-                                })
-                                continue
-                            
-                            # Prepare breed data with all available fields
-                            breed_data = {
-                                'group': group,
-                                'size': size if size else None,
-                            }
-                            
-                            # Add all additional fields from CSV if they exist
-                            field_mappings = {
-                                'Lifespan': 'lifespan',
-                                'Height': 'height', 
-                                'Weight': 'weight',
-                                'Friendliness': 'friendliness',
-                                'Family Friendly': 'family_friendly',
-                                'Child Friendly': 'child_friendly',
-                                'Pet Friendly': 'pet_friendly',
-                                'Stranger Friendly': 'stranger_friendly',
-                                'Easy to Groom': 'easy_to_groom',
-                                'Energy Levels': 'energy_levels',
-                                'Health': 'health',
-                                'Shedding Amout': 'shedding_amount',  # Note: typo in CSV
-                                'Barks / Howls': 'barks_howls',       # Note: spaces in CSV
-                                'Easy to Train': 'easy_to_train',
-                                'Watch dog': 'guard_dog',  # Note: CSV has "Watch dog" not "Guard Dog"
-                                'Playfulness': 'playfulness',
-                                'Apartment Dog': 'apartment_dog',
-                                'Can be Alone': 'can_be_alone',
-                                'Good for Busy Owners': 'good_for_busy_owners',
-                                'Good for New Owners': 'good_for_new_owners',
-                                'Health Concerns': 'health_concerns',
-                                'Short Description': 'short_description',
-                                'Long Description': 'long_description',
-                            }
-                            
-                            # Map CSV fields to model fields
-                            for csv_field, model_field in field_mappings.items():
-                                if csv_field in row and row[csv_field]:
-                                    value = row[csv_field].strip()
-                                    if csv_field in ['Friendliness', 'Family Friendly', 'Child Friendly', 
-                                                    'Pet Friendly', 'Stranger Friendly', 'Easy to Groom',
-                                                    'Energy Levels', 'Health', 'Shedding Amout', 
-                                                    'Barks / Howls', 'Easy to Train', 'Watch dog',
-                                                    'Playfulness', 'Apartment Dog', 'Can be Alone',
-                                                    'Good for Busy Owners', 'Good for New Owners']:
-                                        breed_data[model_field] = parse_rating(value)
-                                    else:
-                                        breed_data[model_field] = value
-                            
-                            # Create or update breed
+                            defaults = {'group': mapped_g, 'size': mapped_s}
+                            defaults = _merge_simple_optional_columns(
+                                row, defaults, col_map
+                            )
+
+                        with transaction.atomic():
                             if update_existing:
-                                breed, created = Breed.objects.update_or_create(
+                                _, created = Breed.objects.update_or_create(
                                     breed=breed_name,
-                                    defaults=breed_data
+                                    defaults=defaults,
                                 )
                                 if created:
                                     results['created'] += 1
                                 else:
                                     results['updated'] += 1
                             else:
-                                # Check if breed already exists
                                 if Breed.objects.filter(breed=breed_name).exists():
                                     results['errors'] += 1
                                     results['error_details'].append({
                                         'row': row_number,
                                         'breed': breed_name,
-                                        'error': 'Breed already exists. Use update=true to update existing breeds.'
+                                        'error': (
+                                            'Breed already exists. Use update=true to update.'
+                                        ),
                                     })
                                     continue
-                                
                                 Breed.objects.create(
                                     breed=breed_name,
-                                    **breed_data
+                                    **defaults,
                                 )
                                 results['created'] += 1
-                        
-                        except Exception as e:
-                            results['errors'] += 1
-                            results['error_details'].append({
-                                'row': row_number,
-                                'breed': row.get('breed', ''),
-                                'error': str(e)
-                            })
-                
-                # Add summary information
+
+                    except Exception as e:
+                        results['errors'] += 1
+                        results['error_details'].append({
+                            'row': row_number,
+                            'breed': (
+                                _row_get(row, col_map, 'Breed', 'breed') or ''
+                            ).strip(),
+                            'error': str(e),
+                        })
+
                 results['total_breeds_in_database'] = Breed.objects.count()
-                
-                # Determine response status
+
                 if results['errors'] > 0 and results['created'] == 0 and results['updated'] == 0:
                     response_status = status.HTTP_400_BAD_REQUEST
                     results['message'] = 'Import failed with errors'
@@ -272,21 +450,21 @@ class BreedViewSet(ModelViewSet):
                 else:
                     response_status = status.HTTP_200_OK
                     results['message'] = 'Import completed successfully'
-                
+
                 return Response(results, status=response_status)
-                
+
             except UnicodeDecodeError:
                 return Response({
                     'error': 'File encoding error',
                     'detail': 'Please ensure the CSV file is UTF-8 encoded'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             except Exception as e:
                 return Response({
                     'error': 'CSV processing error',
                     'detail': str(e)
                 }, status=status.HTTP_400_BAD_REQUEST)
-                
+
         except Exception as e:
             return Response({
                 'error': 'Import failed',

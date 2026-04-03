@@ -18,8 +18,15 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
 
+from breeds.viewsets import BreedViewSet
+
 urlpatterns = [
     path("dogs/", admin.site.urls),
+    # No trailing slash: POST + multipart cannot follow APPEND_SLASH redirect (body dropped).
+    path(
+        "api/breeds/import-csv",
+        BreedViewSet.as_view({"post": "import_csv"}),
+    ),
     path("api/", include(("routers", "routers"), namespace="api")),
 ]
 
