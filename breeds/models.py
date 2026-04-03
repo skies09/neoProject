@@ -87,8 +87,8 @@ class Breed(models.Model):
         blank=True,
         help_text="Comma-separated list of health concerns"
     )
-    short_description = models.CharField(null=True, blank=True, max_length=256)
-    long_description = models.CharField(null=True, blank=True, max_length=528)
+    short_description = models.TextField(null=True, blank=True)
+    long_description = models.TextField(null=True, blank=True)
     portrait_image = models.ImageField(null=True, blank=True, upload_to="dogs")
     landscape_image = models.ImageField(null=True, blank=True, upload_to="dogs")
 

@@ -2,8 +2,9 @@ services:
   - type: web
     name: neoproject-django
     env: python
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
-    startCommand: gunicorn neoProject.wsgi:application
+    # migrate + CSV import run here so free-tier deploys need no Shell (DATABASE_URL available at build).
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput && python manage.py import_dogdb_csv DogDB.csv --update
+    startCommand: gunicorn neoProject.wsgi:application --timeout 180 --graceful-timeout 30
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
