@@ -25,12 +25,12 @@ GROUPS = (
 
 
 class Breed(models.Model):
-    breed = models.CharField(max_length=32)  # PK
+    breed = models.CharField(max_length=64)
     group = models.CharField(max_length=16, choices=GROUPS)
     size = models.CharField(null=True, blank=True, max_length=5, choices=SIZES)
-    lifespan = models.CharField(null=True, blank=True, max_length=8)
-    height = models.CharField(null=True, blank=True, max_length=8)
-    weight = models.CharField(null=True, blank=True, max_length=8)
+    lifespan = models.CharField(null=True, blank=True, max_length=24)
+    height = models.CharField(null=True, blank=True, max_length=24)
+    weight = models.CharField(null=True, blank=True, max_length=24)
     friendliness = models.IntegerField(
         null=True, blank=True, validators=[MaxValueValidator(10), MinValueValidator(1)]
     )

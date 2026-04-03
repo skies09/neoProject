@@ -1,0 +1,33 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans "Home" %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url 'admin:breeds_breed_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; {% trans "Import DogDB.csv" %}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{% trans "Import breeds from DogDB.csv" %}</h1>
+
+<p>{% blocktrans %}This runs the same logic as:{% endblocktrans %}
+  <code>python manage.py import_dogdb_csv DogDB.csv --update</code>
+</p>
+<ul>
+  <li>{% trans "Existing breeds (matched by name) are updated." %}</li>
+  <li>{% trans "Rows in the CSV that are not in the database yet are created." %}</li>
+  <li>{% trans "Breeds that exist only in the database are not removed." %}</li>
+</ul>
+<p><strong>{% trans "File" %}:</strong> <code>{{ csv_path }}</code></p>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="submit-row">
+    <input type="submit" value="{% trans "Run import" %}" class="default" name="_import">
+    <a href="{% url 'admin:breeds_breed_changelist' %}" class="button cancel-link">{% trans "Cancel" %}</a>
+  </div>
+</form>
+{% endblock %}

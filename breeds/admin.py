@@ -1,10 +1,21 @@
-from django.contrib import admin
+from io import StringIO
+from pathlib import Path
+
+from django.conf import settings
+from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
+from django.core.management import call_command
+from django.shortcuts import redirect, render
+from django.urls import path
 from django.utils.html import format_html
+
 from .models import Breed
 
 # Register your models here.
 @admin.register(Breed)
 class BreedAdmin(admin.ModelAdmin):
+    change_list_template = "admin/breeds/breed/change_list.html"
+
     list_display = ('breed', 'group', 'size', 'lifespan', 'height', 'weight', 'display_images')
     list_filter = ('group', 'size')
     search_fields = ('breed', 'group', 'short_description')
@@ -71,7 +82,62 @@ class BreedAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Optimize queryset for admin list view"""
         return super().get_queryset(request).select_related()
-    
+
+    def get_urls(self):
+        urls = super().get_urls()
+        return [
+            path(
+                "import-dogdb/",
+                self.admin_site.admin_view(self.import_dogdb_view),
+                name="breeds_breed_import_dogdb",
+            ),
+        ] + urls
+
+    def import_dogdb_view(self, request):
+        if not request.user.is_superuser:
+            raise PermissionDenied
+
+        csv_path = Path(settings.BASE_DIR) / "DogDB.csv"
+        if not csv_path.is_file():
+            messages.error(
+                request,
+                f"DogDB.csv not found at {csv_path}. Deploy must include this file at the project root.",
+            )
+            return redirect("admin:breeds_breed_changelist")
+
+        if request.method == "POST":
+            stdout = StringIO()
+            stderr = StringIO()
+            try:
+                call_command(
+                    "import_dogdb_csv",
+                    str(csv_path),
+                    update=True,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+            except Exception as exc:
+                messages.error(request, f"Import failed: {exc}")
+            else:
+                err = stderr.getvalue().strip()
+                if err:
+                    messages.warning(request, err[:2000])
+                messages.success(
+                    request,
+                    f"Import finished. {Breed.objects.count()} breeds in the database.",
+                )
+            return redirect("admin:breeds_breed_changelist")
+
+        return render(
+            request,
+            "admin/breeds/breed/import_dogdb.html",
+            {
+                "title": "Import breeds from DogDB.csv",
+                "csv_path": str(csv_path),
+                "opts": self.model._meta,
+            },
+        )
+
     actions = ['mark_as_complete', 'mark_as_incomplete']
     
     def mark_as_complete(self, request, queryset):

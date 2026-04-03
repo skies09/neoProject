@@ -17,15 +17,10 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
-from adoption.auth.viewsets import (RefreshViewSet)
-
-refresh_view = RefreshViewSet.as_view({"post": "create"})
 
 urlpatterns = [
-    path('dogs/', admin.site.urls),
+    path("dogs/", admin.site.urls),
     path("api/", include(("routers", "routers"), namespace="api")),
-     path("auth/refresh/", refresh_view, name="token_refresh"),
-
 ]
 
 if settings.DEBUG:
