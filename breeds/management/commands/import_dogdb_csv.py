@@ -213,14 +213,17 @@ class Command(BaseCommand):
             raise CommandError(f'Error processing CSV file: {str(e)}')
     
     def _parse_rating(self, value):
-        """Parse rating values from CSV"""
-        if not value or value.strip() == '':
+        """Parse rating from CSV: 1–10 stored as-is; 11–100 treated as percent → 1–10."""
+        if value is None or str(value).strip() == '':
             return None
         try:
-            rating = int(value.strip())
-            if 1 <= rating <= 10:
-                return rating
-            else:
-                return None
+            raw = int(round(float(str(value).strip())))
         except (ValueError, TypeError):
             return None
+        if raw <= 0:
+            return None
+        if raw <= 10:
+            return raw
+        if raw <= 100:
+            return max(1, min(10, round(raw / 10.0)))
+        return 10

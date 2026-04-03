@@ -1,7 +1,7 @@
+import os
+import tempfile
 from io import StringIO
-from pathlib import Path
 
-from django.conf import settings
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.core.management import call_command
@@ -97,44 +97,76 @@ class BreedAdmin(admin.ModelAdmin):
         if not request.user.is_superuser:
             raise PermissionDenied
 
-        csv_path = Path(settings.BASE_DIR) / "DogDB.csv"
-        if not csv_path.is_file():
-            messages.error(
-                request,
-                f"DogDB.csv not found at {csv_path}. Deploy must include this file at the project root.",
-            )
-            return redirect("admin:breeds_breed_changelist")
+        max_upload_bytes = 8 * 1024 * 1024  # 8 MiB
 
         if request.method == "POST":
-            stdout = StringIO()
-            stderr = StringIO()
-            try:
-                call_command(
-                    "import_dogdb_csv",
-                    str(csv_path),
-                    update=True,
-                    stdout=stdout,
-                    stderr=stderr,
-                )
-            except Exception as exc:
-                messages.error(request, f"Import failed: {exc}")
-            else:
-                err = stderr.getvalue().strip()
-                if err:
-                    messages.warning(request, err[:2000])
-                messages.success(
+            upload = request.FILES.get("csv_file")
+            if not upload:
+                messages.error(request, "Choose a CSV file to upload.")
+                return redirect("admin:breeds_breed_import_dogdb")
+            reported = getattr(upload, "size", None)
+            if reported is not None and reported > max_upload_bytes:
+                messages.error(
                     request,
-                    f"Import finished. {Breed.objects.count()} breeds in the database.",
+                    f"File too large (max {max_upload_bytes // (1024 * 1024)} MB).",
                 )
+                return redirect("admin:breeds_breed_import_dogdb")
+
+            tmp_path = None
+            try:
+                fd, tmp_path = tempfile.mkstemp(suffix=".csv", prefix="dogdb_import_")
+                written = 0
+                with os.fdopen(fd, "wb") as tmp:
+                    for chunk in upload.chunks():
+                        written += len(chunk)
+                        if written > max_upload_bytes:
+                            raise ValueError("_upload_too_large")
+                        tmp.write(chunk)
+
+                stdout = StringIO()
+                stderr = StringIO()
+                try:
+                    call_command(
+                        "import_dogdb_csv",
+                        tmp_path,
+                        update=True,
+                        stdout=stdout,
+                        stderr=stderr,
+                    )
+                except Exception as exc:
+                    messages.error(request, f"Import failed: {exc}")
+                else:
+                    err = stderr.getvalue().strip()
+                    if err:
+                        messages.warning(request, err[:2000])
+                    messages.success(
+                        request,
+                        f"Import finished. {Breed.objects.count()} breeds in the database.",
+                    )
+            except ValueError as exc:
+                if str(exc) == "_upload_too_large":
+                    messages.error(
+                        request,
+                        f"File too large (max {max_upload_bytes // (1024 * 1024)} MB).",
+                    )
+                else:
+                    messages.error(request, f"Import failed: {exc}")
+            finally:
+                if tmp_path and os.path.isfile(tmp_path):
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+
             return redirect("admin:breeds_breed_changelist")
 
         return render(
             request,
             "admin/breeds/breed/import_dogdb.html",
             {
-                "title": "Import breeds from DogDB.csv",
-                "csv_path": str(csv_path),
+                "title": "Import breeds from CSV",
                 "opts": self.model._meta,
+                "max_mb": max_upload_bytes // (1024 * 1024),
             },
         )
 
