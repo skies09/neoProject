@@ -27,6 +27,10 @@ urlpatterns = [
         "api/breeds/import-csv",
         BreedViewSet.as_view({"post": "import_csv"}),
     ),
+    path(
+        "api/breeds/import-csv-url",
+        BreedViewSet.as_view({"post": "import_csv_url"}),
+    ),
     path("api/", include(("routers", "routers"), namespace="api")),
 ]
 

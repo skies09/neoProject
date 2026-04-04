@@ -1,0 +1,31 @@
+# Run breed import against your production database without Render Shell.
+# One-time setup in GitHub → Settings → Secrets and variables → Actions:
+#   RENDER_DATABASE_URL  — from Render Postgres "External Database URL" (or Internal if using private runner)
+#   DJANGO_SECRET_KEY      — same value as Render SECRET_KEY (Django needs it to boot)
+#
+# Trigger: Actions → "Import DogDB breeds" → Run workflow
+
+name: Import DogDB breeds
+
+on:
+  workflow_dispatch:
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: import_dogdb_csv
+        env:
+          DATABASE_URL: ${{ secrets.RENDER_DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          ENV: PROD
+        run: python manage.py import_dogdb_csv DogDB.csv --update

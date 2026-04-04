@@ -20,6 +20,11 @@ services:
         value: neoproject-django.onrender.com
       - key: CORS_ALLOWED_ORIGINS
         value: https://the-neo-project.web.app
+      # Optional: POST /api/breeds/import-csv-url/ with tiny JSON (server fetches CSV). No Shell.
+      - key: BREED_IMPORT_URL_TOKEN
+        sync: false
+      - key: BREED_IMPORT_URL_PREFIXES
+        sync: false
 
 databases:
   - name: neoproject-db

@@ -1,5 +1,12 @@
 import csv
 import io
+import ipaddress
+import socket
+import urllib.error
+import urllib.request
+from urllib.parse import urlparse
+
+from django.conf import settings as django_settings
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.decorators import action
@@ -224,6 +231,280 @@ def _merge_simple_optional_columns(row, breed_data, col_map):
     return breed_data
 
 
+def _breed_bulk_update_field_names():
+    """Scalar columns set from CSV imports (not id, breed key, or image uploads)."""
+    skip = {"id", "breed", "portrait_image", "landscape_image"}
+    return [
+        f.name
+        for f in Breed._meta.concrete_fields
+        if f.name not in skip
+    ]
+
+
+def _apply_breed_import_bulk(valid_rows, update_existing):
+    """
+    Persist parsed rows with minimal queries (avoids per-row HTTP timeouts / 502).
+
+    valid_rows: list of (row_number, breed_name, defaults) — defaults excludes breed.
+    """
+    out = {"created": 0, "updated": 0, "errors": 0, "error_details": []}
+    if not valid_rows:
+        return out
+
+    bulk_fields = _breed_bulk_update_field_names()
+
+    with transaction.atomic():
+        if update_existing:
+            final = {}
+            for row_number, breed_name, defaults in valid_rows:
+                final[breed_name] = (row_number, defaults)
+
+            names = list(final.keys())
+            existing = {
+                b.breed: b
+                for b in Breed.objects.filter(breed__in=names).only(
+                    "id", "breed", *bulk_fields
+                )
+            }
+            to_create = []
+            to_update = []
+            for breed_name, (_, defaults) in final.items():
+                if breed_name in existing:
+                    obj = existing[breed_name]
+                    for key, val in defaults.items():
+                        setattr(obj, key, val)
+                    to_update.append(obj)
+                else:
+                    to_create.append(Breed(breed=breed_name, **defaults))
+
+            if to_create:
+                Breed.objects.bulk_create(to_create, batch_size=200)
+            if to_update:
+                Breed.objects.bulk_update(to_update, bulk_fields, batch_size=200)
+
+            out["created"] = len(to_create)
+            out["updated"] = len(to_update)
+        else:
+            existing_db = set(Breed.objects.values_list("breed", flat=True))
+            seen_file = set()
+            to_create = []
+            for row_number, breed_name, defaults in valid_rows:
+                if breed_name in seen_file:
+                    out["errors"] += 1
+                    out["error_details"].append(
+                        {
+                            "row": row_number,
+                            "breed": breed_name,
+                            "error": "Duplicate breed row in CSV.",
+                        }
+                    )
+                    continue
+                seen_file.add(breed_name)
+                if breed_name in existing_db:
+                    out["errors"] += 1
+                    out["error_details"].append(
+                        {
+                            "row": row_number,
+                            "breed": breed_name,
+                            "error": (
+                                "Breed already exists. Use update=true to update."
+                            ),
+                        }
+                    )
+                    continue
+                to_create.append(Breed(breed=breed_name, **defaults))
+                existing_db.add(breed_name)
+
+            if to_create:
+                Breed.objects.bulk_create(to_create, batch_size=200)
+            out["created"] = len(to_create)
+
+    return out
+
+
+def _finalize_breed_import_http_status(results):
+    """Attach message and return DRF status for import result dict."""
+    if results["errors"] > 0 and results["created"] == 0 and results["updated"] == 0:
+        results["message"] = "Import failed with errors"
+        return status.HTTP_400_BAD_REQUEST
+    if results["errors"] > 0:
+        results["message"] = "Import completed with some errors"
+        return status.HTTP_207_MULTI_STATUS
+    results["message"] = "Import completed successfully"
+    return status.HTTP_200_OK
+
+
+def _import_breeds_from_csv_text(csv_content, update_existing, clear_existing):
+    """
+    Run breed CSV import from decoded text. Returns results dict (no message / HTTP status).
+    """
+    if csv_content.startswith("\ufeff"):
+        csv_content = csv_content[1:]
+    csv_reader = csv.DictReader(io.StringIO(csv_content))
+    fieldnames = csv_reader.fieldnames
+
+    if not fieldnames:
+        raise ValueError("CSV has no header row")
+
+    col_map = _csv_column_map(fieldnames)
+    dogdb_ok = _has_required_headers(col_map, ("Breed", "Group", "Size"))
+    simple_ok = _has_required_headers(col_map, ("breed", "group", "size"))
+
+    if dogdb_ok:
+        csv_format = "dogdb"
+    elif simple_ok:
+        csv_format = "simple"
+    else:
+        raise ValueError(
+            "Need either DogDB headers (Breed, Group, Size) or "
+            "simple headers (breed, group, size)."
+        )
+
+    if clear_existing:
+        Breed.objects.all().delete()
+
+    results = {
+        "csv_format": csv_format,
+        "created": 0,
+        "updated": 0,
+        "errors": 0,
+        "skipped": 0,
+        "error_details": [],
+    }
+
+    valid_rows = []
+
+    for row_number, row in enumerate(csv_reader, start=2):
+        try:
+            if csv_format == "dogdb":
+                breed_data, err = _breed_row_from_dogdb(row, col_map)
+                if err:
+                    results["errors"] += 1
+                    results["error_details"].append(
+                        {
+                            "row": row_number,
+                            "breed": (
+                                _row_get(row, col_map, "Breed") or ""
+                            ).strip(),
+                            "error": err,
+                        }
+                    )
+                    continue
+                breed_name = breed_data["breed"]
+                if not breed_name:
+                    results["skipped"] += 1
+                    continue
+                defaults = {k: v for k, v in breed_data.items() if k != "breed"}
+            else:
+                breed_name = (_row_get(row, col_map, "breed") or "").strip()
+                if not breed_name:
+                    results["skipped"] += 1
+                    continue
+                mapped_g, mapped_s, err = _normalize_breed_group_size(
+                    _row_get(row, col_map, "group") or "",
+                    _row_get(row, col_map, "size") or "",
+                )
+                if err:
+                    results["errors"] += 1
+                    results["error_details"].append(
+                        {
+                            "row": row_number,
+                            "breed": breed_name,
+                            "error": err,
+                        }
+                    )
+                    continue
+                defaults = {"group": mapped_g, "size": mapped_s}
+                defaults = _merge_simple_optional_columns(row, defaults, col_map)
+
+            valid_rows.append((row_number, breed_name, defaults))
+
+        except Exception as e:
+            results["errors"] += 1
+            results["error_details"].append(
+                {
+                    "row": row_number,
+                    "breed": (
+                        _row_get(row, col_map, "Breed", "breed") or ""
+                    ).strip(),
+                    "error": str(e),
+                }
+            )
+
+    bulk_out = _apply_breed_import_bulk(valid_rows, update_existing)
+    results["created"] += bulk_out["created"]
+    results["updated"] += bulk_out["updated"]
+    results["errors"] += bulk_out["errors"]
+    results["error_details"].extend(bulk_out["error_details"])
+    results["total_breeds_in_database"] = Breed.objects.count()
+    return results
+
+
+def _assert_breed_csv_fetch_url_allowed(url: str) -> None:
+    prefixes = django_settings.BREED_IMPORT_URL_PREFIXES
+    if not prefixes:
+        raise ValueError(
+            "BREED_IMPORT_URL_PREFIXES is not set on the server "
+            "(comma-separated allowed URL prefixes)."
+        )
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError("Only https URLs are allowed")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("Invalid URL")
+    normalized = url.split("?", 1)[0].rstrip("/")
+    if not any(
+        normalized.startswith(p + "/") or normalized == p for p in prefixes
+    ):
+        raise ValueError("URL is not under an allowed prefix")
+
+    try:
+        infos = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+    except OSError as exc:
+        raise ValueError(f"Could not resolve host: {exc}") from exc
+    for info in infos:
+        ip_str = info[4][0]
+        try:
+            ip_obj = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if (
+            ip_obj.is_private
+            or ip_obj.is_loopback
+            or ip_obj.is_link_local
+            or ip_obj.is_multicast
+        ):
+            raise ValueError("Host resolves to a disallowed address")
+
+
+def _fetch_breed_csv_bytes(url: str) -> bytes:
+    _assert_breed_csv_fetch_url_allowed(url)
+    max_b = django_settings.BREED_IMPORT_URL_MAX_BYTES
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "NeoProject-breed-import/1.0"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            chunks = []
+            total = 0
+            while True:
+                block = resp.read(65536)
+                if not block:
+                    break
+                total += len(block)
+                if total > max_b:
+                    raise ValueError("CSV exceeds BREED_IMPORT_URL_MAX_BYTES")
+                chunks.append(block)
+    except urllib.error.HTTPError as exc:
+        raise ValueError(f"Download failed: HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise ValueError(f"Download failed: {exc.reason}") from exc
+    return b"".join(chunks)
+
+
 class BreedViewSet(ModelViewSet):
     queryset = Breed.objects.all()
     serializer_class = BreedSerializer
@@ -318,139 +599,19 @@ class BreedViewSet(ModelViewSet):
 
             try:
                 csv_content = csv_file.read().decode('utf-8')
-                if csv_content.startswith('\ufeff'):
-                    csv_content = csv_content[1:]
-                csv_reader = csv.DictReader(io.StringIO(csv_content))
-                fieldnames = csv_reader.fieldnames
-
-                if not fieldnames:
-                    return Response({
-                        'error': 'Invalid CSV format',
-                        'detail': 'CSV has no header row',
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-                col_map = _csv_column_map(fieldnames)
-                dogdb_ok = _has_required_headers(col_map, ('Breed', 'Group', 'Size'))
-                simple_ok = _has_required_headers(col_map, ('breed', 'group', 'size'))
-
-                if dogdb_ok:
-                    csv_format = 'dogdb'
-                elif simple_ok:
-                    csv_format = 'simple'
-                else:
-                    return Response({
-                        'error': 'Invalid CSV format',
-                        'detail': (
-                            'Need either DogDB headers (Breed, Group, Size) or '
-                            'simple headers (breed, group, size).'
-                        ),
-                        'available_columns': list(fieldnames),
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-                if clear_existing:
-                    Breed.objects.all().delete()
-
-                results = {
-                    'csv_format': csv_format,
-                    'created': 0,
-                    'updated': 0,
-                    'errors': 0,
-                    'skipped': 0,
-                    'error_details': [],
-                }
-
-                for row_number, row in enumerate(csv_reader, start=2):
-                    try:
-                        if csv_format == 'dogdb':
-                            breed_data, err = _breed_row_from_dogdb(row, col_map)
-                            if err:
-                                results['errors'] += 1
-                                results['error_details'].append({
-                                    'row': row_number,
-                                    'breed': (
-                                        _row_get(row, col_map, 'Breed') or ''
-                                    ).strip(),
-                                    'error': err,
-                                })
-                                continue
-                            breed_name = breed_data['breed']
-                            if not breed_name:
-                                results['skipped'] += 1
-                                continue
-                            defaults = {k: v for k, v in breed_data.items() if k != 'breed'}
-                        else:
-                            breed_name = (
-                                _row_get(row, col_map, 'breed') or ''
-                            ).strip()
-                            if not breed_name:
-                                results['skipped'] += 1
-                                continue
-                            mapped_g, mapped_s, err = _normalize_breed_group_size(
-                                _row_get(row, col_map, 'group') or '',
-                                _row_get(row, col_map, 'size') or '',
-                            )
-                            if err:
-                                results['errors'] += 1
-                                results['error_details'].append({
-                                    'row': row_number,
-                                    'breed': breed_name,
-                                    'error': err,
-                                })
-                                continue
-                            defaults = {'group': mapped_g, 'size': mapped_s}
-                            defaults = _merge_simple_optional_columns(
-                                row, defaults, col_map
-                            )
-
-                        with transaction.atomic():
-                            if update_existing:
-                                _, created = Breed.objects.update_or_create(
-                                    breed=breed_name,
-                                    defaults=defaults,
-                                )
-                                if created:
-                                    results['created'] += 1
-                                else:
-                                    results['updated'] += 1
-                            else:
-                                if Breed.objects.filter(breed=breed_name).exists():
-                                    results['errors'] += 1
-                                    results['error_details'].append({
-                                        'row': row_number,
-                                        'breed': breed_name,
-                                        'error': (
-                                            'Breed already exists. Use update=true to update.'
-                                        ),
-                                    })
-                                    continue
-                                Breed.objects.create(
-                                    breed=breed_name,
-                                    **defaults,
-                                )
-                                results['created'] += 1
-
-                    except Exception as e:
-                        results['errors'] += 1
-                        results['error_details'].append({
-                            'row': row_number,
-                            'breed': (
-                                _row_get(row, col_map, 'Breed', 'breed') or ''
-                            ).strip(),
-                            'error': str(e),
-                        })
-
-                results['total_breeds_in_database'] = Breed.objects.count()
-
-                if results['errors'] > 0 and results['created'] == 0 and results['updated'] == 0:
-                    response_status = status.HTTP_400_BAD_REQUEST
-                    results['message'] = 'Import failed with errors'
-                elif results['errors'] > 0:
-                    response_status = status.HTTP_207_MULTI_STATUS
-                    results['message'] = 'Import completed with some errors'
-                else:
-                    response_status = status.HTTP_200_OK
-                    results['message'] = 'Import completed successfully'
-
+                try:
+                    results = _import_breeds_from_csv_text(
+                        csv_content, update_existing, clear_existing
+                    )
+                except ValueError as exc:
+                    return Response(
+                        {
+                            'error': 'Invalid CSV format',
+                            'detail': str(exc),
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                response_status = _finalize_breed_import_http_status(results)
                 return Response(results, status=response_status)
 
             except UnicodeDecodeError:
@@ -470,6 +631,91 @@ class BreedViewSet(ModelViewSet):
                 'error': 'Import failed',
                 'detail': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(
+        detail=False,
+        methods=['post'],
+        permission_classes=[AllowAny],
+        url_path='import-csv-url',
+    )
+    def import_csv_url(self, request):
+        """
+        Import breeds by URL (tiny JSON request; server downloads CSV). For hosts where
+        multipart uploads hit timeouts — no Render Shell needed.
+
+        Headers:
+            X-Breed-Import-Token: must match env BREED_IMPORT_URL_TOKEN
+
+        JSON body:
+            csv_url (required): https URL whose prefix is allowed by BREED_IMPORT_URL_PREFIXES
+            update (optional): true/false
+            clear (optional): true/false
+        """
+        token_cfg = django_settings.BREED_IMPORT_URL_TOKEN
+        if not token_cfg:
+            return Response(
+                {
+                    'error': 'URL import disabled',
+                    'detail': (
+                        'Set BREED_IMPORT_URL_TOKEN and BREED_IMPORT_URL_PREFIXES '
+                        'on the server (Render → Environment).'
+                    ),
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if request.headers.get('X-Breed-Import-Token') != token_cfg:
+            return Response(
+                {
+                    'error': 'Unauthorized',
+                    'detail': 'Send header X-Breed-Import-Token matching the server secret.',
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        csv_url = request.data.get('csv_url')
+        if not csv_url or not isinstance(csv_url, str):
+            return Response(
+                {
+                    'error': 'csv_url required',
+                    'detail': 'JSON body: {"csv_url": "https://...", "update": true}',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        update_existing = (
+            str(request.data.get('update', 'false')).lower() in ('true', '1', 'yes')
+        )
+        clear_existing = (
+            str(request.data.get('clear', 'false')).lower() in ('true', '1', 'yes')
+        )
+
+        try:
+            raw = _fetch_breed_csv_bytes(csv_url.strip())
+            csv_content = raw.decode('utf-8')
+        except ValueError as exc:
+            return Response(
+                {'error': 'Could not download CSV', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except UnicodeDecodeError:
+            return Response(
+                {'error': 'File encoding error', 'detail': 'CSV must be UTF-8'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            results = _import_breeds_from_csv_text(
+                csv_content, update_existing, clear_existing
+            )
+        except ValueError as exc:
+            return Response(
+                {'error': 'Invalid CSV format', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        response_status = _finalize_breed_import_http_status(results)
+        results['source'] = 'url'
+        return Response(results, status=response_status)
 
     # Endpoint to match breeds based on preferences
     @action(detail=False, methods=['post'], permission_classes=[AllowAny], url_path='match')

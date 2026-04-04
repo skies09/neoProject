@@ -241,6 +241,18 @@ else:
     ]
 CORS_ALLOW_CREDENTIALS = True
 
+# Server-side breed CSV fetch (small JSON POST; optional on Render free tier — no Shell).
+# Set both on Render: comma-separated URL prefixes you trust, plus a random secret.
+BREED_IMPORT_URL_TOKEN = os.environ.get("BREED_IMPORT_URL_TOKEN", "").strip()
+BREED_IMPORT_URL_PREFIXES = tuple(
+    p.strip().rstrip("/")
+    for p in os.environ.get("BREED_IMPORT_URL_PREFIXES", "").split(",")
+    if p.strip()
+)
+BREED_IMPORT_URL_MAX_BYTES = int(
+    os.environ.get("BREED_IMPORT_URL_MAX_BYTES", str(30 * 1024 * 1024))
+)
+
 # Logging Configuration
 LOGGING = {
     "version": 1,
