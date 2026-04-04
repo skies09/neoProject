@@ -28,9 +28,9 @@ class Breed(models.Model):
     breed = models.CharField(max_length=64)
     group = models.CharField(max_length=16, choices=GROUPS)
     size = models.CharField(null=True, blank=True, max_length=5, choices=SIZES)
-    lifespan = models.CharField(null=True, blank=True, max_length=24)
-    height = models.CharField(null=True, blank=True, max_length=24)
-    weight = models.CharField(null=True, blank=True, max_length=24)
+    lifespan = models.CharField(null=True, blank=True, max_length=48)
+    height = models.CharField(null=True, blank=True, max_length=48)
+    weight = models.CharField(null=True, blank=True, max_length=48)
     friendliness = models.IntegerField(
         null=True, blank=True, validators=[MaxValueValidator(10), MinValueValidator(1)]
     )

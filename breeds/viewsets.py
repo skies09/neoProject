@@ -7,6 +7,7 @@ import urllib.request
 from urllib.parse import urlparse
 
 from django.conf import settings as django_settings
+from django.db import DatabaseError
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.decorators import action
@@ -322,6 +323,35 @@ def _apply_breed_import_bulk(valid_rows, update_existing):
     return out
 
 
+def _clamp_breed_defaults_chars(defaults):
+    """Trim CharField strings to model max_length before bulk_create / bulk_update."""
+    out = dict(defaults)
+    for name, val in list(out.items()):
+        if val is None or not isinstance(val, str):
+            continue
+        try:
+            field = Breed._meta.get_field(name)
+        except Exception:
+            continue
+        max_len = getattr(field, "max_length", None)
+        if max_len and len(val) > max_len:
+            out[name] = val[:max_len]
+    return out
+
+
+def _breed_import_database_error_payload(exc):
+    msg = str(exc).lower()
+    payload = {"error": "Database error during import", "detail": str(exc)}
+    if "too long" in msg or "character varying" in msg:
+        payload["error"] = "Database columns are too short for this CSV"
+        payload["fix"] = (
+            "Run database migrations (e.g. `python manage.py migrate`). "
+            "Breeds migrations 0003+ widen lifespan, height, and weight; "
+            "0005 widens them further. On Render, redeploy so the build runs migrate."
+        )
+    return payload
+
+
 def _finalize_breed_import_http_status(results):
     """Attach message and return DRF status for import result dict."""
     if results["errors"] > 0 and results["created"] == 0 and results["updated"] == 0:
@@ -417,7 +447,13 @@ def _import_breeds_from_csv_text(csv_content, update_existing, clear_existing):
                 defaults = {"group": mapped_g, "size": mapped_s}
                 defaults = _merge_simple_optional_columns(row, defaults, col_map)
 
-            valid_rows.append((row_number, breed_name, defaults))
+            valid_rows.append(
+                (
+                    row_number,
+                    breed_name,
+                    _clamp_breed_defaults_chars(defaults),
+                )
+            )
 
         except Exception as e:
             results["errors"] += 1
@@ -611,6 +647,11 @@ class BreedViewSet(ModelViewSet):
                         },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+                except DatabaseError as exc:
+                    return Response(
+                        _breed_import_database_error_payload(exc),
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 response_status = _finalize_breed_import_http_status(results)
                 return Response(results, status=response_status)
 
@@ -710,6 +751,11 @@ class BreedViewSet(ModelViewSet):
         except ValueError as exc:
             return Response(
                 {'error': 'Invalid CSV format', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except DatabaseError as exc:
+            return Response(
+                _breed_import_database_error_payload(exc),
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
