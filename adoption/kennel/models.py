@@ -37,12 +37,6 @@ class KennelManager(BaseUserManager):
         kennel.save(using=self._db)
         return kennel
 
-    def get_object_by_public_id(self, public_id):
-        try:
-            return self.get(id=public_id)
-        except self.model.DoesNotExist:
-            return None
-
 
 class Kennel(AbstractModel, AbstractBaseUser, PermissionsMixin):
     username = models.CharField(db_index=True, max_length=255, unique=True)

@@ -1,6 +1,5 @@
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework import viewsets
-from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework import status
@@ -34,6 +33,10 @@ class KennelViewSet(AbstractViewSet):
 
         return obj
 
+    def list(self, request, *args, **kwargs):
+        """Full kennel directory is managed in Django Admin."""
+        return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
     # Update Kennel info - only allow kennel users to update their own profile
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -46,12 +49,6 @@ class KennelViewSet(AbstractViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
-
-    @action(detail=False, methods=['get'], permission_classes=[AllowAny], url_path='names')
-    def list_names(self, request):
-        """Return a list of all kennel names."""
-        kennel_names = Kennel.objects.filter(is_active=True).values_list('name', flat=True).order_by('name')
-        return Response(list(kennel_names), status=status.HTTP_200_OK)
 
 
 class KennelPasswordChangeViewSet(viewsets.ViewSet):

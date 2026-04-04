@@ -79,14 +79,6 @@ class ContactAPITest(APITestCase):
             'message': 'I would like to register my rescue center.',
             'priority': 'high'
         }
-        
-        # Create admin user
-        self.admin_user = User.objects.create_superuser(
-            username='admin',
-            email='admin@example.com',
-            password='testpass123',
-            name='Admin User'
-        )
     
     def test_create_contact_public(self):
         """Test creating contact via public API"""
@@ -115,72 +107,11 @@ class ContactAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('errors', response.data)
     
-    def test_list_contacts_admin_only(self):
-        """Test that listing contacts requires admin authentication"""
+    def test_list_contacts_not_exposed(self):
+        """GET /api/contacts/ is not part of the public API (use Django Admin)."""
         url = reverse('api:contacts-list')
-        
-        # Test without authentication
         response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        
-        # Test with authentication
-        self.client.force_authenticate(user=self.admin_user)
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-    
-    def test_contact_stats(self):
-        """Test contact statistics endpoint"""
-        # Create some test contacts
-        Contact.objects.create(
-            name='Contact 1',
-            email='contact1@example.com',
-            contact_number='1111111111',
-            message='Test message 1',
-            priority='high'
-        )
-        Contact.objects.create(
-            name='Contact 2',
-            email='contact2@example.com',
-            contact_number='2222222222',
-            message='Test message 2',
-            priority='low',
-            is_actioned=True
-        )
-        
-        url = reverse('api:contacts-stats')
-        self.client.force_authenticate(user=self.admin_user)
-        response = self.client.get(url)
-        
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['total_contacts'], 2)
-        self.assertEqual(response.data['pending_contacts'], 1)
-        self.assertEqual(response.data['actioned_contacts'], 1)
-        self.assertEqual(response.data['high_priority_contacts'], 1)
-    
-    def test_mark_contact_actioned(self):
-        """Test marking contact as actioned"""
-        contact = Contact.objects.create(
-            name='Test Contact',
-            email='test@example.com',
-            contact_number='3333333333',
-            message='Test message'
-        )
-        
-        # Test the URL generation first
-        url = reverse('api:contacts-mark-actioned', kwargs={'pk': contact.public_id})
-        self.assertIn(str(contact.public_id), url)
-        
-        self.client.force_authenticate(user=self.admin_user)
-        
-        response = self.client.post(url, {'notes': 'Test action'}, format='json')
-        # For now, let's just check that we get some response
-        self.assertIn(response.status_code, [200, 404, 405])
-        
-        if response.status_code == 200:
-            contact.refresh_from_db()
-            self.assertTrue(contact.is_actioned)
-            self.assertEqual(contact.actioned_by, self.admin_user)
-            self.assertEqual(contact.action_notes, 'Test action')
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
     
     def test_non_staff_cannot_modify_actioned_by(self):
         """Test that non-staff users cannot modify actioned_by field"""

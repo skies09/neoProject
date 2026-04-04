@@ -1,10 +1,10 @@
-from rest_framework import viewsets, status, permissions
+from rest_framework import mixins, viewsets, status
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.shortcuts import get_object_or_404
+from rest_framework.permissions import AllowAny
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db import transaction
-from django.utils import timezone
 from django.db.models import Q, F
 from decimal import Decimal
 import uuid
@@ -13,8 +13,10 @@ from .models import (
     Product, Order, OrderItem
 )
 from .serializers import (
-    ProductSerializer, ProductListSerializer,
-    OrderSerializer, OrderCreateSerializer, OrderItemSerializer
+    ProductSerializer,
+    ProductListSerializer,
+    OrderSerializer,
+    OrderCreateSerializer,
 )
 
 
@@ -139,26 +141,19 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(categories)
 
 
-class OrderViewSet(viewsets.ModelViewSet):
-    """ViewSet for orders"""
-    serializer_class = OrderSerializer
-    permission_classes = [AllowAny]  # Allow anonymous users to create orders
-    
-    def get_queryset(self):
-        if self.request.user.is_authenticated:
-            return Order.objects.filter(user=self.request.user)
-        else:
-            # For anonymous users, they can only view orders they created in this session
-            session_key = self.request.session.session_key
-            if session_key:
-                return Order.objects.filter(session_key=session_key)
-            return Order.objects.none()
-    
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return OrderCreateSerializer
-        return OrderSerializer
-    
+class OrderViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
+    """
+    POST /api/shop/orders/ only — checkout creates an order and returns it.
+    Listing and order detail are handled in Django Admin.
+    Anonymous clients need session (cookies + CSRF for browser POST).
+    """
+
+    queryset = Order.objects.all()
+    serializer_class = OrderCreateSerializer
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
+    permission_classes = [AllowAny]
+    http_method_names = ["post", "head", "options"]
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Create order with items"""
@@ -258,5 +253,3 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response(order_serializer.data, status=status.HTTP_201_CREATED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-

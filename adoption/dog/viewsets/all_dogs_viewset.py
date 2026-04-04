@@ -7,6 +7,9 @@ from adoption.dog.models import Dog, SIZES
 from adoption.dog.serializers import DogSerializer, DogMatchRequestSerializer
 import random
 
+# Bound worst-case Python scoring; tune if SLOs or inventory change (see NEO_PROJECT.md).
+MATCH_MAX_CANDIDATES = 5000
+
 
 # Gets all the dogs
 class AllDogsViewSet(viewsets.ReadOnlyModelViewSet):
@@ -14,49 +17,45 @@ class AllDogsViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = DogSerializer
     permission_classes = [AllowAny]
 
-    # This is the main feature!
-    # Filters the dogs to find a single dog
-    @action(detail=False, methods=["post"], url_path="filter")
-    def filter_dogs(self, request):
-        gender = request.data.get("gender")
-        good_with_dogs = request.data.get("goodWithDogs")
-        good_with_cats = request.data.get("goodWithCats")
-        good_with_children = request.data.get("goodWithChildren")
-
-        # Define filtering options in order of importance
-        # Iterations of search to find one dog
-        filter_options = [
-            {
-                "gender": gender,
-                "good_with_dogs": good_with_dogs,
-                "good_with_cats": good_with_cats,
-                "good_with_children": good_with_children,
-            },
-            {
-                "good_with_dogs": good_with_dogs,
-                "good_with_cats": good_with_cats,
-                "good_with_children": good_with_children,
-            },
-            {},  # No filters, return oldest dog
-        ]
-
-        for filters in filter_options:
-            dogs = Dog.objects.all()
-            for key, value in filters.items():
-                if value is not None:
-                    # Permissive value
-                    if key == "gender":
-                        dogs = dogs.filter(gender__iexact=value)
-                    else:
-                        dogs = dogs.filter(**{key: value})
-            dog = dogs.order_by("created").first()
-            if dog:
-                serializer = self.get_serializer(dog)
-                return Response(serializer.data, status=status.HTTP_200_OK)
-
-        return Response(
-            {"detail": "No matching dog found."}, status=status.HTTP_404_NOT_FOUND
-        )
+    # Disabled: POST /api/dogs/filter/ — use POST /api/dogs/match/ for preference-based results.
+    # @action(detail=False, methods=["post"], url_path="filter")
+    # def filter_dogs(self, request):
+    #     gender = request.data.get("gender")
+    #     good_with_dogs = request.data.get("goodWithDogs")
+    #     good_with_cats = request.data.get("goodWithCats")
+    #     good_with_children = request.data.get("goodWithChildren")
+    #
+    #     filter_options = [
+    #         {
+    #             "gender": gender,
+    #             "good_with_dogs": good_with_dogs,
+    #             "good_with_cats": good_with_cats,
+    #             "good_with_children": good_with_children,
+    #         },
+    #         {
+    #             "good_with_dogs": good_with_dogs,
+    #             "good_with_cats": good_with_cats,
+    #             "good_with_children": good_with_children,
+    #         },
+    #         {},
+    #     ]
+    #
+    #     for filters in filter_options:
+    #         dogs = Dog.objects.all()
+    #         for key, value in filters.items():
+    #             if value is not None:
+    #                 if key == "gender":
+    #                     dogs = dogs.filter(gender__iexact=value)
+    #                 else:
+    #                     dogs = dogs.filter(**{key: value})
+    #         dog = dogs.order_by("created").first()
+    #         if dog:
+    #             serializer = self.get_serializer(dog)
+    #             return Response(serializer.data, status=status.HTTP_200_OK)
+    #
+    #     return Response(
+    #         {"detail": "No matching dog found."}, status=status.HTTP_404_NOT_FOUND
+    #     )
 
     @action(detail=False, methods=["get"], url_path="dog-of-the-day")
     def dog_of_the_day(self, request):
@@ -79,17 +78,11 @@ class AllDogsViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-        # Alternative implementation: Return the oldest dog
-
-        # oldest_dog = dogs.order_by('created').first()
-        # serializer = self.get_serializer(oldest_dog)
-        # return Response(serializer.data, status=status.HTTP_200_OK)
-
     @action(detail=False, methods=['post'], permission_classes=[AllowAny], url_path='match')
     def match_dogs(self, request):
         """
         Match dogs based on user preferences. All fields optional; empty string = no preference.
-        Returns up to 20 dogs with match_rate > 0%, sorted by match rate descending.
+        Returns up to 20 dogs with match_rate > MIN_MATCH_RATE (50%), sorted by match rate descending.
         """
         request_serializer = DogMatchRequestSerializer(data=request.data)
         if not request_serializer.is_valid():
@@ -244,13 +237,18 @@ class AllDogsViewSet(viewsets.ReadOnlyModelViewSet):
         top_results = []
         all_scored_count = 0
         by_rate = []
+        candidate_pool_truncated = False
 
         for step, lenient in enumerate(leniency_order):
             if step == 0 and prefs.get('is_crossbreed') is False:
                 candidate_pool = pool.filter(is_crossbreed=False)
             else:
                 candidate_pool = pool
-            dogs_list = list(candidate_pool)
+            ordered = candidate_pool.order_by("id")
+            peek = list(ordered[:MATCH_MAX_CANDIDATES + 1])
+            if len(peek) > MATCH_MAX_CANDIDATES:
+                candidate_pool_truncated = True
+            dogs_list = peek[:MATCH_MAX_CANDIDATES]
             all_scored_count = len(dogs_list)
             scored = [(dog, score_dog(dog, lenient)) for dog in dogs_list]
             by_rate = [(d, r) for d, r in scored if r > MIN_MATCH_RATE]
@@ -274,5 +272,9 @@ class AllDogsViewSet(viewsets.ReadOnlyModelViewSet):
             'matches': results,
             'total_dogs_compared': all_scored_count,
             'total_matches_found': len(by_rate),
-            'preferences_used': {k: v for k, v in prefs.items() if has_pref(k)}
+            'preferences_used': {k: v for k, v in prefs.items() if has_pref(k)},
+            'match_limits': {
+                'max_candidates_scored': MATCH_MAX_CANDIDATES,
+                'candidate_pool_truncated': candidate_pool_truncated,
+            },
         }, status=status.HTTP_200_OK)

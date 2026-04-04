@@ -1,3 +1,4 @@
+from django.http import Http404
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -37,12 +38,11 @@ class DogViewSet(AbstractViewSet):
     def get_object(self):
         try:
             obj = Dog.objects.get_object_by_public_id(self.kwargs["pk"])
-            # Check if the logged-in user owns this dog
-            if obj.kennel != self.request.user:
-                raise PermissionDenied("You can only access your own dogs.")
-            return obj
-        except Dog.DoesNotExist:
+        except Http404:
             raise NotFound("Dog not found.")
+        if obj.kennel != self.request.user:
+            raise PermissionDenied("You can only access your own dogs.")
+        return obj
 
     def create(self, request, *args, **kwargs):
         # Check if we're in a nested context and validate kennel ownership

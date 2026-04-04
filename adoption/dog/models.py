@@ -84,3 +84,11 @@ class Dog(AbstractModel):
         verbose_name = "Dog"
         verbose_name_plural = "Dogs"
         ordering = ["-created"]
+        indexes = [
+            models.Index(fields=["age"], name="dog_match_age"),
+            models.Index(fields=["weight"], name="dog_match_weight"),
+            models.Index(fields=["good_with_children"], name="dog_match_gwc"),
+            models.Index(fields=["good_with_dogs"], name="dog_match_gwd"),
+            models.Index(fields=["good_with_cats"], name="dog_match_gwcats"),
+            models.Index(fields=["is_crossbreed"], name="dog_match_cross"),
+        ]
