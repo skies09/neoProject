@@ -16,11 +16,19 @@ Including another URLconf
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.http import HttpResponse
 from django.urls import path, include
 
 from breeds.viewsets import BreedViewSet
 
+
+def healthz(_request):
+    """Render / other platforms: HTTP health checks must get 2xx (not 404 on /)."""
+    return HttpResponse("OK", content_type="text/plain")
+
+
 urlpatterns = [
+    path("healthz", healthz),
     path("dogs/", admin.site.urls),
     # No trailing slash: POST + multipart cannot follow APPEND_SLASH redirect (body dropped).
     path(

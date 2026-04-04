@@ -39,7 +39,11 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False if ENV == "PROD" else True
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
+    if h.strip()
+] or ["*"]
 
 
 # Application definition

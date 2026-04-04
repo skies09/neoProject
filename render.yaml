@@ -2,9 +2,11 @@ services:
   - type: web
     name: neoproject-django
     env: python
-    # migrate + CSV import run here so free-tier deploys need no Shell (DATABASE_URL available at build).
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput && python manage.py import_dogdb_csv DogDB.csv --update
-    startCommand: gunicorn neoProject.wsgi:application --timeout 180 --graceful-timeout 30
+    # HTTP health check must return 2xx (see /healthz). Bind to Render's PORT.
+    healthCheckPath: /healthz
+    # migrate + CSV import at build (no Shell). Optional: set DOGDB_CSV_URL to pull CSV from HTTPS (skip flaky upload API).
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput && python scripts/fetch_dogdb_build.py && python manage.py import_dogdb_csv DogDB.csv --update
+    startCommand: gunicorn neoProject.wsgi:application --bind 0.0.0.0:$PORT --timeout 180 --graceful-timeout 30
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -16,14 +18,18 @@ services:
         fromDatabase:
           name: neoproject-db
           property: connectionString
+      # Leading dot = any *.onrender.com (avoids DisallowedHost if service URL renames)
       - key: DJANGO_ALLOWED_HOSTS
-        value: neoproject-django.onrender.com
+        value: .onrender.com
       - key: CORS_ALLOWED_ORIGINS
         value: https://the-neo-project.web.app
       # Optional: POST /api/breeds/import-csv-url/ with tiny JSON (server fetches CSV). No Shell.
       - key: BREED_IMPORT_URL_TOKEN
         sync: false
       - key: BREED_IMPORT_URL_PREFIXES
+        sync: false
+      # Optional: HTTPS URL to DogDB.csv — build downloads it then imports (no multipart / 502).
+      - key: DOGDB_CSV_URL
         sync: false
 
 databases:
