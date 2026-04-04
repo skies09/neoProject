@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from django.db import transaction
 
+from .csv_import_schema import ensure_breed_table_for_csv_import
 from .models import Breed
 from .serializers import BreedSerializer, BreedMatchRequestSerializer
 
@@ -255,6 +256,7 @@ def _apply_breed_import_bulk(valid_rows, update_existing):
     bulk_fields = _breed_bulk_update_field_names()
 
     with transaction.atomic():
+        ensure_breed_table_for_csv_import()
         if update_existing:
             final = {}
             for row_number, breed_name, defaults in valid_rows:
@@ -345,9 +347,9 @@ def _breed_import_database_error_payload(exc):
     if "too long" in msg or "character varying" in msg:
         payload["error"] = "Database columns are too short for this CSV"
         payload["fix"] = (
-            "Deploy latest code and ensure `migrate` runs (breeds.0008 converts lifespan/height/weight "
-            "to Postgres TEXT). wsgi.py runs migrate on boot when ENV=PROD. Manual SQL: "
-            "`scripts/fix_breeds_varchar_postgres.sql`."
+            "Deploy the latest code: CSV import now runs ALTER TABLE on the live DB connection "
+            "before inserts (see breeds/csv_import_schema.py). If this still appears, the DB user "
+            "may lack ALTER privileges, or the failure is on a different table — check full server logs."
         )
     return payload
 
