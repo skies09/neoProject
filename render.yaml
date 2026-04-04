@@ -6,7 +6,8 @@ services:
     healthCheckPath: /healthz
     # migrate + CSV import at build (no Shell). Optional: set DOGDB_CSV_URL to pull CSV from HTTPS (skip flaky upload API).
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput && python scripts/fetch_dogdb_build.py && python manage.py import_dogdb_csv DogDB.csv --update
-    startCommand: gunicorn neoProject.wsgi:application --bind 0.0.0.0:$PORT --timeout 180 --graceful-timeout 30
+    # Migrate at boot uses runtime DATABASE_URL (fixes prod still on varchar(8) if build-time migrate missed the DB).
+    startCommand: python manage.py migrate --noinput && gunicorn neoProject.wsgi:application --bind 0.0.0.0:$PORT --timeout 180 --graceful-timeout 30
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0

@@ -345,9 +345,10 @@ def _breed_import_database_error_payload(exc):
     if "too long" in msg or "character varying" in msg:
         payload["error"] = "Database columns are too short for this CSV"
         payload["fix"] = (
-            "Run database migrations (e.g. `python manage.py migrate`). "
-            "Breeds migrations 0003+ widen lifespan, height, and weight; "
-            "0005 widens them further. On Render, redeploy so the build runs migrate."
+            "Apply migrations against production Postgres: `python manage.py migrate`. "
+            "This repo includes breeds.0006 (PostgreSQL ALTER for lifespan/height/weight). "
+            "On Render: redeploy with the latest code — the start command runs migrate "
+            "before gunicorn so the live DB is updated even if build-time migrate did not hit it."
         )
     return payload
 
