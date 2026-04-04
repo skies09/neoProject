@@ -13,6 +13,9 @@ services:
         value: 3.11.0
       - key: ENV
         value: PROD
+      # wsgi.py runs migrate on boot when PROD unless set to false (covers overridden Start Command).
+      - key: RUN_MIGRATE_ON_BOOT
+        value: "true"
       - key: SECRET_KEY
         sync: false
       - key: DATABASE_URL

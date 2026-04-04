@@ -1,10 +1,11 @@
 -- Emergency fix if Django migrations cannot run against your Render Postgres.
 -- Run in psql, Render Postgres "Shell", or any SQL client connected to the same DB as the app.
 
+-- TEXT removes varchar length limits entirely (matches breeds.0008).
 ALTER TABLE public.breeds_breed
-  ALTER COLUMN lifespan TYPE varchar(48) USING lifespan::varchar(48),
-  ALTER COLUMN height TYPE varchar(48) USING height::varchar(48),
-  ALTER COLUMN weight TYPE varchar(48) USING weight::varchar(48);
+  ALTER COLUMN lifespan TYPE text USING lifespan::text,
+  ALTER COLUMN height TYPE text USING height::text,
+  ALTER COLUMN weight TYPE text USING weight::text;
 
 ALTER TABLE public.breeds_breed
   ALTER COLUMN breed TYPE varchar(64) USING breed::varchar(64);

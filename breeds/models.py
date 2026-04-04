@@ -28,9 +28,10 @@ class Breed(models.Model):
     breed = models.CharField(max_length=64)
     group = models.CharField(max_length=16, choices=GROUPS)
     size = models.CharField(null=True, blank=True, max_length=5, choices=SIZES)
-    lifespan = models.CharField(null=True, blank=True, max_length=48)
-    height = models.CharField(null=True, blank=True, max_length=48)
-    weight = models.CharField(null=True, blank=True, max_length=48)
+    # TextField → Postgres TEXT (no varchar length); avoids legacy varchar(8) on old DBs.
+    lifespan = models.TextField(null=True, blank=True)
+    height = models.TextField(null=True, blank=True)
+    weight = models.TextField(null=True, blank=True)
     friendliness = models.IntegerField(
         null=True, blank=True, validators=[MaxValueValidator(10), MinValueValidator(1)]
     )

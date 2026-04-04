@@ -345,9 +345,9 @@ def _breed_import_database_error_payload(exc):
     if "too long" in msg or "character varying" in msg:
         payload["error"] = "Database columns are too short for this CSV"
         payload["fix"] = (
-            "Run `python manage.py migrate` on production (breeds.0007 widens any varchar still ≤8). "
-            "Render: redeploy so migrate runs at start. If migrations still do not apply, run "
-            "`scripts/fix_breeds_varchar_postgres.sql` manually against the same DATABASE_URL."
+            "Deploy latest code and ensure `migrate` runs (breeds.0008 converts lifespan/height/weight "
+            "to Postgres TEXT). wsgi.py runs migrate on boot when ENV=PROD. Manual SQL: "
+            "`scripts/fix_breeds_varchar_postgres.sql`."
         )
     return payload
 
