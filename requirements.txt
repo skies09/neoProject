@@ -13,3 +13,5 @@ psycopg2-binary==2.9.9
 dj-database-url==0.5.0
 
 django-redis==5.2.0
+cloudinary
+django-cloudinary-storage

@@ -55,7 +55,9 @@ INSTALLED_APPS = [
     "whitenoise.runserver_nostatic",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "cloudinary_storage",
     "django.contrib.staticfiles",
+    "cloudinary",
     "rest_framework",
     "rest_framework_simplejwt",
     "corsheaders",
@@ -190,6 +192,11 @@ STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
 MEDIA_URL = "/images/"
 MEDIA_ROOT = BASE_DIR / "static/images"
+
+# Cloudinary media storage (optional; enabled when CLOUDINARY_URL is set).
+# This keeps local media storage for local/dev environments without Cloudinary vars.
+if os.environ.get("CLOUDINARY_URL"):
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
