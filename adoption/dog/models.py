@@ -2,6 +2,7 @@ from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
 
 from adoption.abstract.models import AbstractModel, AbstractManager
+from neoProject.upload_paths import CloudinaryFolderPath
 
 SIZES = (
     ("XS", "x-small"),
@@ -61,13 +62,22 @@ class Dog(AbstractModel):
         null=True, blank=True, help_text="Additional information about the dog"
     )
     image = models.ImageField(
-        null=True, blank=True, upload_to="adoption/dog/images", help_text="Dog's photo"
+        null=True,
+        blank=True,
+        upload_to=CloudinaryFolderPath("adoptDogs"),
+        help_text="Dog's photo",
     )
     image2 = models.ImageField(
-        null=True, blank=True, upload_to="adoption/dog/images", help_text="Dog's second photo"
+        null=True,
+        blank=True,
+        upload_to=CloudinaryFolderPath("adoptDogs"),
+        help_text="Dog's second photo",
     )
     image3 = models.ImageField(
-        null=True, blank=True, upload_to="adoption/dog/images", help_text="Dog's third photo"
+        null=True,
+        blank=True,
+        upload_to=CloudinaryFolderPath("adoptDogs"),
+        help_text="Dog's third photo",
     )
     kennel = models.ForeignKey(
         to="adoption_kennel.Kennel",

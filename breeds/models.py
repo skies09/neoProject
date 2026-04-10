@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
+from neoProject.upload_paths import CloudinaryFolderPath
 
 # from django.contrib.postgres.fields import ArrayField
 
@@ -90,8 +91,12 @@ class Breed(models.Model):
     )
     short_description = models.TextField(null=True, blank=True)
     long_description = models.TextField(null=True, blank=True)
-    portrait_image = models.ImageField(null=True, blank=True, upload_to="dogs")
-    landscape_image = models.ImageField(null=True, blank=True, upload_to="dogs")
+    portrait_image = models.ImageField(
+        null=True, blank=True, upload_to=CloudinaryFolderPath("breeds")
+    )
+    landscape_image = models.ImageField(
+        null=True, blank=True, upload_to=CloudinaryFolderPath("breeds")
+    )
 
 
 # class Meta:

@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from adoption.abstract.models import AbstractModel
+from neoProject.upload_paths import CloudinaryFolderPath
 
 User = get_user_model()
 
@@ -18,7 +19,9 @@ class BlogPost(AbstractModel):
     tags = models.CharField(max_length=500, blank=True, default='', help_text="Comma-separated tags")
     is_published = models.BooleanField(default=False)
     published_at = models.DateTimeField(null=True, blank=True)
-    featured_image = models.ImageField(upload_to='blog/images/', blank=True, null=True)
+    featured_image = models.ImageField(
+        upload_to=CloudinaryFolderPath("blog"), blank=True, null=True
+    )
     featured = models.BooleanField(default=False)
 
     class Meta:
